@@ -45,6 +45,18 @@ function testcounter(m, n, N)
         end
     end
     @assert scounter == sloop
+    scounter = 0
+    sz1 = sz[1]
+    sz[1] = 1
+    @time begin
+        for k = 1:N
+            @Cartesian.forcartesian c sz begin
+                for i = 1:sz1
+                    scounter += 1
+                end
+            end
+        end
+    end
 end
 
 testcounter(2,2,1)

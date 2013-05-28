@@ -109,4 +109,15 @@ which generates
 4 [1, 3]
 5 [1, 3]
 ```
-This can be more trouble than it's worth if your loop code really needs to have that first index built in to `c`. However, if `sz1` is not small, and your loop code can _efficiently_ make use of `i` in place of `c[1]`, then in very tight loops this can essentially erase all overhead of multidimensional iteration.
+This can be more trouble than it's worth if your loop code really needs to have that first index built in to `c`. However, if `sz1` is not small, and your loop code can _efficiently_ make use of `i` in place of `c[1]`, then in very tight loops this can essentially erase all overhead of multidimensional iteration. However, the following example
+```
+sz1 = sz[1]
+sz[1] = 1
+@forcartesian c sz begin
+    for i = 1:sz1
+        c[1] = i
+        counter += 1
+    end
+end
+```
+is no more performant than the original. So unless your loop is really trivial, it's very unlikely you'll notice much overhead from `Cartesian`.
