@@ -1,5 +1,7 @@
 module Cartesian
 
+import Base: replace
+
 export @forcartesian, @forarrays, @forrangearrays, parent
 
 macro forcartesian(sym, sz, ex)
@@ -47,6 +49,27 @@ end
 
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
 namedvar(base::Symbol, ext1, ext2) = symbol(string(base)*string(ext1)*string(ext2))
+
+function inlineanonymous(ex::Expr, val)
+    if ex.head != :->
+        error("Not an anonymous function")
+    end
+    if !isa(ex.args[1], Symbol)
+        error("Not a single-argument anonymous function")
+    end
+    sym = ex.args[1]
+    ex = ex.args[2]
+    replace(copy(ex), sym, val)
+end
+
+replace(s::Symbol, sym::Symbol, val) = (s == sym) ? val : s
+replace(n::Number, sym::Symbol, val) = n
+function replace(ex::Expr, sym::Symbol, val)
+    for i in 1:length(ex.args)
+        ex.args[i] = replace(ex.args[i], sym, val)
+    end
+    ex
+end
 
 # Generate expressions like :( sliceA = sliceoffset(A) )
 function sliceoffsetexpr(array::Symbol)
@@ -102,7 +125,7 @@ function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     if !isa(itersym, Symbol)
         error("Third argument must be the base-name of the coordinate (iteration) variable")
     end
-    if !isa(rangeexpr, Expr)
+    if !(isa(rangeexpr, Expr) && rangeexpr.head == :->)
         error("Fourth argument must be an anonymous-function expression to compute the range")
     end
     if length(args) < 2
@@ -119,11 +142,12 @@ function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     asyms = args[1:end-1]
     ex = Expr(:escape, args[end])
     # Generate N-1 loops, starting with the inner one
-    for i = 1:N-1
-        offsetvars = [nestedoffsetexpr(offsetsym, itersym, asym, i) for asym in asyms]
-        itervar = namedvar(itersym, i)
+    for idim = 1:N-1
+        offsetvars = [nestedoffsetexpr(offsetsym, itersym, asym, idim) for asym in asyms]
+        itervar = namedvar(itersym, idim)
+        rng = inlineanonymous(rangeexpr, idim)
         ex = quote
-            for $(esc(itervar)) = $(esc(rangeexpr))($i)
+            for $(esc(itervar)) = $(esc(rng))
                 $(excat(offsetvars))
                 $ex
             end
@@ -132,8 +156,9 @@ function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     # Generate the outer loop, which cannot depend on previous loops (it's not nested)
     offsetvars = [offsetexpr(offsetsym, itersym, asym, N) for asym in asyms]
     itervar = namedvar(itersym, N)
+    rng = inlineanonymous(rangeexpr, N)
     ex = quote
-        for $(esc(itervar)) = $(esc(rangeexpr))($N)
+        for $(esc(itervar)) = $(esc(rng))
             $(excat(offsetvars))
             $ex
         end
