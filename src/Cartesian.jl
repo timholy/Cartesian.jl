@@ -1,6 +1,6 @@
 module Cartesian
 
-export @forcartesian, @forarrays, parent
+export @forcartesian, @forarrays, @forrangearrays, parent
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -92,7 +92,7 @@ end
 excat(exlist) = length(exlist) == 1 ? exlist[1] : Expr(:block, exlist...)
 
 # Note in args, the first n-1 are array symbols, the last is the expression
-macro forarrays(N, offsetsym, itersym, args...)
+function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     if !isa(N, Integer)
         error("First argument must be the number of dimensions (as an integer)")
     end
@@ -102,8 +102,16 @@ macro forarrays(N, offsetsym, itersym, args...)
     if !isa(itersym, Symbol)
         error("Third argument must be the base-name of the coordinate (iteration) variable")
     end
+    if !isa(rangeexpr, Expr)
+        error("Fourth argument must be an anonymous-function expression to compute the range")
+    end
     if length(args) < 2
         error("Supply at least one array and the inner-loop expression")
+    end
+    for i = 1:length(args)-1
+        if !isa(args[i], Symbol)
+            error("All of the arrays must be symbols")
+        end
     end
     if !isa(args[end], Expr)
         error("The final argument must be the inner-loop expression")
@@ -115,7 +123,7 @@ macro forarrays(N, offsetsym, itersym, args...)
         offsetvars = [nestedoffsetexpr(offsetsym, itersym, asym, i) for asym in asyms]
         itervar = namedvar(itersym, i)
         ex = quote
-            for $(esc(itervar)) = 1:size($(esc(asyms[1])), $i)
+            for $(esc(itervar)) = $(esc(rangeexpr))($i)
                 $(excat(offsetvars))
                 $ex
             end
@@ -125,7 +133,7 @@ macro forarrays(N, offsetsym, itersym, args...)
     offsetvars = [offsetexpr(offsetsym, itersym, asym, N) for asym in asyms]
     itervar = namedvar(itersym, N)
     ex = quote
-        for $(esc(itervar)) = 1:size($(esc(asyms[1])), $N)
+        for $(esc(itervar)) = $(esc(rangeexpr))($N)
             $(excat(offsetvars))
             $ex
         end
@@ -139,6 +147,14 @@ macro forarrays(N, offsetsym, itersym, args...)
         $(excat(headervars))
         $ex
     end
+end
+
+macro forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
+    _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
+end
+
+macro forarrays(N, offsetsym, itersym, args...)
+    _forrangearrays(N, offsetsym, itersym, :(d->1:size($(args[1]),d)), args...)
 end
 
 end

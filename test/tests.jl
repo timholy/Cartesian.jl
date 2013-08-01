@@ -91,7 +91,7 @@ function mysum{T,N}(A::StridedArray{T,N})
             end
         end
         eval(current_module(), ex)
-        _mysum_defined[N] = true
+        _mysum_defined[typeof(A)] = true
     end
     _mysum(A)
 end
