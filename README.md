@@ -2,7 +2,7 @@
 
 Fast multidimensional iteration for the Julia language.
 
-This package provides a single macro, `@forcartesian`, that currently appears to be the fastest way to get a "multidimensional iterator" in Julia.
+This package provides macros that currently appear to be the fastest way to implement several multidimensional algorithms in Julia.
 
 ## Installation
 
@@ -41,7 +41,101 @@ This generates the following output:
 [5, 3]
 ```
 
-### How it works
+And here's a demonstration of the performance improvements one can get with another macro, `@forarrays`:
+```
+A = rand(1000,1001,50);
+X = zeros(900,840,53);
+sA = sub(A, 7:800, 50:513, 2:49);
+sX = sub(X, 12+(1:size(sA,1)), 3+(1:size(sA,2)), 4+(1:size(sA,3)));
+
+julia> copy!(sX, sA);
+
+julia> X1 = copy(X);
+
+julia> @time copy!(sX, sA);
+elapsed time: 15.947416695 seconds (3738479504 bytes allocated)
+
+julia> fill!(X, 0);
+
+julia> using Cartesian
+
+julia> import Base.copy!
+
+julia> for N = 1:5
+           @eval begin
+               function copy!{R,S}(dest::AbstractArray{R,$N}, src::AbstractArray{S,$N})
+                   @forarrays $N o i dest src begin
+                       parent(dest)[odest] = parent(src)[osrc]
+                   end
+                   return dest
+               end
+           end
+       end
+
+julia> copy!(sX, sA);
+
+julia> X == X1
+true
+
+julia> @time copy!(sX, sA);
+elapsed time: 0.175267421 seconds (2512 bytes allocated)
+```
+In this case, it's 100 times faster and far more memory efficient.
+
+
+With `@forarrays`, the arguments appear in the following order:
+- `N`, the dimensionality. This must be an *integer*, not a symbol, which is why
+we put this in an `@eval` loop. See `test/tests.jl` for an example of how to
+create a wrapper for arbitrary dimensionality.
+- `o`, the prefix for the linear-indexing (offset) variable. Each array
+(mentioned later) will have its own offset variable defined (see `odest` and
+`osrc` in the code snippet above). Note that for `SubArray`s, these are relative
+to the *parent* array, which is why the indexing operations inside the loop are
+written as `parent(A)[o]`.
+- `i`, the prefix for the coordinate variables. In three dimensions there will
+be 3 such variables created, `i1`, `i2`, and `i3`.
+- A list of the arrays for which you'd like to create offset variables
+- Last, the expression you want in the inner loop (inside the `begin..end``).
+
+There's also a variant, `@forrangearrays`, that lets you supply a subset of the coordinate range:
+```
+@forrangearrays 3 o i d->2:size(A,d)-1 A begin
+    ...
+end
+```
+would skip the edges of `A`.
+
+These macros also create some additional variables, e.g., `strideA3`, which can be useful for addressing neighboring points. See the code for details.
+
+### How `@forarrays` works
+
+From the simple code snippet above, `@forarrays` creates a block of code that looks like this (implementation for 3d, with two `SubArray` inputs, shown):
+
+```
+    stridedest1 = stride(dest, 1)
+    stridedest2 = stride(dest, 2)
+    stridedest3 = stride(dest, 3)
+    stridesrc1  = stride(src, 1)
+    stridesrc2  = stride(src, 2)
+    stridesrc3  = stride(src, 3)
+    for i3 = 1:size(dest, 3)
+        odest3 = dest.first_index + (dest.indexes[3][i3]-1)*stridedest3
+        osrc3  = src.first_index + (src.indexes[3][i3]-1)*stridesrc3
+        for i2 = 1:size(dest, 2)
+            odest2 = odest3 + (dest.indexes[2][i2]-1)*stridedest2
+            osrc2  = osrc3 + (src.indexes[2][i2]-1)*stridesrc2
+            for i1 = 1:size(dest, 1)
+                odest = odest2 + (dest.indexes[1][i1]-1)*stridedest1
+                osrc  = osrc2 + (src.indexes[1][i1]-1)*stridesrc1
+                dest.parent[odest] = src.parent[osrc]
+            end
+        end
+    end
+```
+
+The key to its speed is the tightness of this inner loop. Note also that no memory is allocated.
+
+### How `@forcartesian` works
 
 From the simple example above, `@forcartesian` generates a block of code like this:
 
