@@ -105,7 +105,44 @@ end
 ```
 would skip the edges of `A`.
 
-These macros also create some additional variables, e.g., `strideA3`, which can be useful for addressing neighboring points. See the code for details.
+These macros also create some additional variables, e.g., `strideA3`, which can be useful for addressing neighboring points. See below for details.
+
+The most flexible of these related macros is `@forindexes`, which can be used like this:
+```
+indexes = Vector{Int}[[3,4,5,1,2],[5,3,1,6,4,2]]
+A = zeros(5,6)
+k = 1
+@forindexes 2 o i indexes A begin
+    A[oA] = k
+    k += 1
+end
+
+julia> A
+5x6 Float64 Array:
+ 14.0  29.0   9.0  24.0  4.0  19.0
+ 15.0  30.0  10.0  25.0  5.0  20.0
+ 11.0  26.0   6.0  21.0  1.0  16.0
+ 12.0  27.0   7.0  22.0  2.0  17.0
+ 13.0  28.0   8.0  23.0  3.0  18.0
+```
+Note that this example is the equivalent of `A[indexes[1],indexes[2]] = 1:30`, but in general you can use `@forindexes` in situations in which you'd rather not have to allocate the right-hand side (or any other temporaries).
+
+The general syntax is the following:
+```
+@forindexes N o i indexesA A indexesB B ... begin
+    expr
+end
+```
+You should supply `Array`s, not `SubArray`s, to `@forindexes`. (You can use the `SubArray`'s `indexes` field as the appropriate input.)
+
+Note that you only need to supply as many index/array pairs as is required to set strides and offsets; if `A`, `B`, and `C` are identical in terms of their indexing, size, and strides, then the following suffices:
+```
+@forindexes N o i indexesA A begin
+    C[oA] = A[oA] + B[oA]
+end
+```
+This will be more efficient because only one set of offset variables needs to be constructed (see below).
+
 
 ### How `@forarrays` works
 

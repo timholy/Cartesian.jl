@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export @forcartesian, @forarrays, @forrangearrays, parent
+export @forcartesian, @forarrays, @forrangearrays, @forindexes, parent
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -86,6 +86,14 @@ function offsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     return :($(esc(ocur)) = $(esc(slice)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
+# Generate expressions like :( oA3 = (index[3][i3]-1)*strideA3 ), using strides appropriate for a particular array
+function offsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Symbol, dim::Integer)
+    ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
+    icur = namedvar(iter, dim)
+    scur = namedvar(:stride, array, dim)
+    return :($(esc(ocur)) = ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
+end
+
 # Generate expressions like :( o2 = o3 + (i2-1)*stride2 ), using strides appropriate for a particular array
 function nestedoffsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
@@ -96,6 +104,19 @@ function nestedoffsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Inte
         return :($(esc(ocur)) = $(esc(oprev)) + index($(esc(array)), $dim, $(esc(icur))))
     else
         return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
+    end
+end
+
+# Generate expressions like :( oA2 = oA3 + (index[2][i2]-1)*strideA2 )
+function nestedoffsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Symbol, dim::Integer)
+    ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
+    oprev = namedvar(offset, array, dim+1)
+    icur = namedvar(iter, dim)
+    scur = namedvar(:stride, array, dim)
+    if dim == 1
+        return :($(esc(ocur)) = $(esc(oprev)) + $(esc(index))[$dim][$(esc(icur))])
+    else
+        return :($(esc(ocur)) = $(esc(oprev)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
     end
 end
 
@@ -114,7 +135,7 @@ end
 
 excat(exlist) = length(exlist) == 1 ? exlist[1] : Expr(:block, exlist...)
 
-# Note in args, the first n-1 are array symbols, the last is the expression
+# In args, the first n-1 are array symbols, the last is the expression
 function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     if !isa(N, Integer)
         error("First argument must be the number of dimensions (as an integer)")
@@ -174,12 +195,76 @@ function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     end
 end
 
+# In args, the first n-1 are array symbols, the last is the expression
+function _forindexes(N, offsetsym, itersym, args...)
+    if !isa(N, Integer)
+        error("First argument must be the number of dimensions (as an integer)")
+    end
+    if !isa(offsetsym, Symbol)
+        error("Second argument must be the base-name of the offset variable")
+    end
+    if !isa(itersym, Symbol)
+        error("Third argument must be the base-name of the coordinate (iteration) variable")
+    end
+    if !isodd(length(args)) || length(args) < 3
+        error("Final arguments must be I1 A1 I2 A2 ... expr, where Ii is a vector of indexes, Ai is an array, and expr is your function body")
+    end
+    for i = 1:length(args)-1
+        if !isa(args[i], Symbol)
+            error("All of the indexes and arrays must be symbols")
+        end
+    end
+    if !isa(args[end], Expr)
+        error("The final argument must be the inner-loop expression")
+    end
+    indexsyms = args[1:2:end-1]
+    asyms = args[2:2:end-1]
+    ex = Expr(:escape, args[end])
+    # Generate N-1 loops, starting with the inner one
+    for idim = 1:N-1
+        offsetvars = [nestedoffsetexpr(offsetsym, itersym, indexsyms[i], asyms[i], idim) for i = 1:length(indexsyms)]
+        itervar = namedvar(itersym, idim)
+        ovar = namedvar(offsetsym, asyms[1], idim)
+        indexsym = indexsyms[1]
+        ex = quote
+            for $(esc(itervar)) = 1:length($(esc(indexsym))[$idim])
+                $(excat(offsetvars))
+                $ex
+            end
+        end
+    end
+    # Generate the outer loop, which cannot depend on previous loops (it's not nested)
+    offsetvars = [offsetexpr(offsetsym, itersym, indexsyms[i], asyms[i], N) for i = 1:length(indexsyms)]
+    itervar = namedvar(itersym, N)
+    ovar = namedvar(offsetsym, asyms[1], N)
+    indexsym = indexsyms[1]
+    ex = quote
+        for $(esc(itervar)) = 1:length($(esc(indexsym))[$N])
+            $(excat(offsetvars))
+            $ex
+        end
+    end
+    # Generate the stride variables and sliceoffset variables
+    headervars = Array(Expr, 0)
+    for i = 1:N
+        append!(headervars, Expr[strideexpr(asym, i) for asym in asyms])
+    end
+    return quote
+        $(excat(headervars))
+        $ex
+    end
+end
+
 macro forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
 end
 
 macro forarrays(N, offsetsym, itersym, args...)
     _forrangearrays(N, offsetsym, itersym, :(d->1:size($(args[1]),d)), args...)
+end
+
+macro forindexes(N, offsetsym, itersym, args...)
+    _forindexes(N, offsetsym, itersym, args...)
 end
 
 end
