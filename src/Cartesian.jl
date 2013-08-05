@@ -32,10 +32,12 @@ macro forcartesian(sym, sz, ex)
 end
 
 ### Fast SubArray (and Array) operations ###
+
 parent(A::Array) = A
 parent(S::SubArray) = S.parent
 index(A::Array, dim::Integer, i::Integer) = i
 index(S::SubArray, dim::Integer, i::Integer) = S.indexes[dim][i]
+
 # Calculate the offset due to trailing/sliced singleton dimensions
 sliceoffset(A::Array) = 0
 function sliceoffset(S::SubArray)
@@ -77,34 +79,31 @@ function sliceoffsetexpr(array::Symbol)
     return :($(esc(slice)) = sliceoffset($(esc(array))))
 end
 
-# Generate expressions like :( o3 = :slice3 + (i3-1)*stride3 ), using strides appropriate for a particular array
+# Generate expressions like :( oA3 = 1 + :sliceA3 + (i3-1)*strideA3 ), using strides appropriate for a particular array A
 function offsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
     slice = namedvar(:slice, array)
-    return :($(esc(ocur)) = $(esc(slice)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
+    return :($(esc(ocur)) = 1 + $(esc(slice)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
-# Generate expressions like :( oA3 = (index[3][i3]-1)*strideA3 ), using strides appropriate for a particular array
+# Generate expressions like :( oA3 = 1 + :sliceA3 + (index[3][i3]-1)*strideA3 )
 function offsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
-    return :($(esc(ocur)) = ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
+    slice = namedvar(:slice, array)
+    return :($(esc(ocur)) = 1 + $(esc(slice)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
 end
 
-# Generate expressions like :( o2 = o3 + (i2-1)*stride2 ), using strides appropriate for a particular array
+# Generate expressions like :( oA2 = oA3 + (i2-1)*strideA2 )
 function nestedoffsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
     oprev = namedvar(offset, array, dim+1)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
-    if dim == 1
-        return :($(esc(ocur)) = $(esc(oprev)) + index($(esc(array)), $dim, $(esc(icur))))
-    else
-        return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
-    end
+    return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( oA2 = oA3 + (index[2][i2]-1)*strideA2 )
@@ -113,11 +112,7 @@ function nestedoffsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Sy
     oprev = namedvar(offset, array, dim+1)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
-    if dim == 1
-        return :($(esc(ocur)) = $(esc(oprev)) + $(esc(index))[$dim][$(esc(icur))])
-    else
-        return :($(esc(ocur)) = $(esc(oprev)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
-    end
+    return :($(esc(ocur)) = $(esc(oprev)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( strideA3 = strideA2 * size(parent(A), 3) )
