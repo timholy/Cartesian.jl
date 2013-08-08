@@ -133,7 +133,22 @@ The general syntax is the following:
     expr
 end
 ```
-You should supply `Array`s, not `SubArray`s, to `@forindexes`. (You can use the `SubArray`'s `indexes` field as the appropriate input.)
+If you want this to be safe for `SubArray`s, you should do something like this:
+```
+ind = parentindexes(A)
+@forindexes $N o i ind A begin
+    parent(A)[oA] = val
+end
+```
+This properly handles `slice`s, whereas
+```
+ind = parentindexes(A)
+P = parent(A)
+@forindexes $N o i ind P begin
+    P[oP] = val   # WRONG!
+end
+```
+does not.
 
 Note that you only need to supply as many index/array pairs as is required to set strides and offsets; if `A`, `B`, and `C` are identical in terms of their indexing, size, and strides, then the following suffices:
 ```
