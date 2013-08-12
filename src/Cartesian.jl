@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export @forcartesian, @forarrays, @forrangearrays, @forindexes, parent, parentindexes
+export @forcartesian, @forarrays, @forrangearrays, @forindexes, parent, parentsubindexes
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -37,8 +37,8 @@ parent(A::Array) = A
 parent(S::SubArray) = S.parent
 index(A::Array, dim::Integer, i::Integer) = i
 index(S::SubArray, dim::Integer, i::Integer) = S.indexes[dim][i]
-parentindexes(A::Array) = ntuple(ndims(A), i -> 1:size(A,i))
-parentindexes(A::SubArray) = A.indexes[Base.parentdims(A)]
+parentsubindexes(A::Array) = ntuple(ndims(A), i -> 1:size(A,i))
+parentsubindexes(A::SubArray) = A.indexes[Base.parentdims(A)]
 
 # Calculate the offset due to trailing/sliced singleton dimensions
 sliceoffset(A::Array) = 0
