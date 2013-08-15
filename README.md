@@ -135,7 +135,7 @@ end
 ```
 If you want this to be safe for `SubArray`s, you should do something like this:
 ```
-ind = parentindexes(A)
+ind = parentsubindexes(A)
 @forindexes $N o i ind A begin
     parent(A)[oA] = val
 end
