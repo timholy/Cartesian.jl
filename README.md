@@ -148,7 +148,7 @@ P = parent(A)
     P[oP] = val   # WRONG!
 end
 ```
-does not.
+does not. Also, if you're passing indexes into a function as an argument, make sure you [force specialization on each indexes argument](https://github.com/JuliaLang/julia/issues/4090).
 
 Note that you only need to supply as many index/array pairs as is required to set strides and offsets; if `A`, `B`, and `C` are identical in terms of their indexing, size, and strides, then the following suffices:
 ```
@@ -156,7 +156,7 @@ Note that you only need to supply as many index/array pairs as is required to se
     C[oA] = A[oA] + B[oA]
 end
 ```
-This will be more efficient because only one set of offset variables needs to be constructed (see below).
+This will be more efficient because only one set of offset variables needs to be constructed (see below).  For functions with a tight inner loop, `@forindexes` is slower than `@forarrays` because an additional lookup needs to be performed.
 
 
 ### How `@forarrays` works

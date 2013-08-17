@@ -90,13 +90,14 @@ function offsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     return :($(esc(ocur)) = 1 + $(esc(slice)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
-# Generate expressions like :( oA3 = 1 + :sliceA3 + (index[3][i3]-1)*strideA3 )
+# Generate expressions like :( oA3 = 1 + :sliceA3 + (index3[i3]-1)*strideA3 )
 function offsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
     slice = namedvar(:slice, array)
-    return :($(esc(ocur)) = 1 + $(esc(slice)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
+    indexcur = namedvar(index, dim)
+    return :($(esc(ocur)) = 1 + $(esc(slice)) + ($(esc(indexcur))[$(esc(icur))]-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( oA2 = oA3 + (i2-1)*strideA2 )
@@ -108,13 +109,14 @@ function nestedoffsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Inte
     return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
-# Generate expressions like :( oA2 = oA3 + (index[2][i2]-1)*strideA2 )
+# Generate expressions like :( oA2 = oA3 + (index2[i2]-1)*strideA2 )
 function nestedoffsetexpr(offset::Symbol, iter::Symbol, index::Symbol, array::Symbol, dim::Integer)
     ocur = dim == 1 ? namedvar(offset, array) : namedvar(offset, array, dim)
     oprev = namedvar(offset, array, dim+1)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
-    return :($(esc(ocur)) = $(esc(oprev)) + ($(esc(index))[$dim][$(esc(icur))]-1)*$(esc(scur)))
+    indexcur = namedvar(index, dim)
+    return :($(esc(ocur)) = $(esc(oprev)) + ($(esc(indexcur))[$(esc(icur))]-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( strideA3 = strideA2 * size(parent(A), 3) )
@@ -222,9 +224,9 @@ function _forindexes(N, offsetsym, itersym, args...)
         offsetvars = [nestedoffsetexpr(offsetsym, itersym, indexsyms[i], asyms[i], idim) for i = 1:length(indexsyms)]
         itervar = namedvar(itersym, idim)
         ovar = namedvar(offsetsym, asyms[1], idim)
-        indexsym = indexsyms[1]
+        indexsym = namedvar(indexsyms[1], idim)
         ex = quote
-            for $(esc(itervar)) = 1:length($(esc(indexsym))[$idim])
+            for $(esc(itervar)) = 1:length($(esc(indexsym)))
                 $(excat(offsetvars))
                 $ex
             end
@@ -234,9 +236,9 @@ function _forindexes(N, offsetsym, itersym, args...)
     offsetvars = [offsetexpr(offsetsym, itersym, indexsyms[i], asyms[i], N) for i = 1:length(indexsyms)]
     itervar = namedvar(itersym, N)
     ovar = namedvar(offsetsym, asyms[1], N)
-    indexsym = indexsyms[1]
+    indexsym = namedvar(indexsyms[1], N)
     ex = quote
-        for $(esc(itervar)) = 1:length($(esc(indexsym))[$N])
+        for $(esc(itervar)) = 1:length($(esc(indexsym)))
             $(excat(offsetvars))
             $ex
         end
@@ -245,6 +247,14 @@ function _forindexes(N, offsetsym, itersym, args...)
     headervars = [sliceoffsetexpr(asym) for asym in asyms]
     for i = 1:N
         append!(headervars, Expr[strideexpr(asym, i) for asym in asyms])
+    end
+    # Extract each index variable
+    for i = 1:length(indexsyms)
+        indexessym = indexsyms[i]
+        for dim = 1:N
+            indexsym = namedvar(indexsyms[i], dim)
+            push!(headervars, :($(esc(indexsym)) = $(esc(indexessym))[$dim]))
+        end
     end
     return quote
         $(excat(headervars))
