@@ -35,10 +35,13 @@ end
 
 parent(A::Array) = A
 parent(S::SubArray) = S.parent
-index(A::Array, dim::Integer, i::Integer) = i
-index(S::SubArray, dim::Integer, i::Integer) = S.indexes[dim][i]
 parentsubindexes(A::Array) = ntuple(ndims(A), i -> 1:size(A,i))
 parentsubindexes(A::SubArray) = A.indexes[Base.parentdims(A)]
+parsedindexes(A::Array) = nothing
+parsedindexes(A::SubArray) = parentsubindexes(A)
+
+index(A::Array, pindexes::Nothing, dim::Integer, i::Integer) = i
+index{TI}(S::SubArray, pindexes::TI, dim::Integer, i::Integer) = pindexes[dim][i]
 
 # Calculate the offset due to trailing/sliced singleton dimensions
 sliceoffset(A::Array) = 0
@@ -87,7 +90,8 @@ function offsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Integer)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
     slice = namedvar(:slice, array)
-    return :($(esc(ocur)) = 1 + $(esc(slice)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
+    pindexesvar = namedvar(:pindexes, array)
+    return :($(esc(ocur)) = 1 + $(esc(slice)) + (index($(esc(array)), $(esc(pindexesvar)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( oA3 = 1 + :sliceA3 + (index3[i3]-1)*strideA3 )
@@ -106,7 +110,8 @@ function nestedoffsetexpr(offset::Symbol, iter::Symbol, array::Symbol, dim::Inte
     oprev = namedvar(offset, array, dim+1)
     icur = namedvar(iter, dim)
     scur = namedvar(:stride, array, dim)
-    return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $dim, $(esc(icur)))-1)*$(esc(scur)))
+    pindexesvar = namedvar(:pindexes, array)
+    return :($(esc(ocur)) = $(esc(oprev)) + (index($(esc(array)), $(esc(pindexesvar)), $dim, $(esc(icur)))-1)*$(esc(scur)))
 end
 
 # Generate expressions like :( oA2 = oA3 + (index2[i2]-1)*strideA2 )
@@ -187,6 +192,11 @@ function _forrangearrays(N, offsetsym, itersym, rangeexpr, args...)
     headervars = [sliceoffsetexpr(asym) for asym in asyms]
     for i = 1:N
         append!(headervars, Expr[strideexpr(asym, i) for asym in asyms])
+    end
+    for i = 1:length(asyms)
+        asym = asyms[i]
+        pindexesvar = namedvar(:pindexes, asym)
+        push!(headervars, :( $(esc(pindexesvar)) = parsedindexes($(esc(asym))) ))
     end
     return quote
         $(excat(headervars))

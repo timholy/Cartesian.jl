@@ -95,7 +95,7 @@ written as `parent(A)[o]`.
 - `i`, the prefix for the coordinate variables. In three dimensions there will
 be 3 such variables created, `i1`, `i2`, and `i3`.
 - A list of the arrays for which you'd like to create offset variables
-- Last, the expression you want in the inner loop (inside the `begin..end``).
+- Last, the expression you want in the inner loop (inside the `begin..end`).
 
 There's also a variant, `@forrangearrays`, that lets you supply a subset of the coordinate range:
 ```
@@ -161,7 +161,8 @@ This will be more efficient because only one set of offset variables needs to be
 
 ### How `@forarrays` works
 
-From the simple code snippet above, `@forarrays` creates a block of code that looks like this (implementation for 3d, with two `SubArray` inputs, shown):
+From the simple code snippet above, `@forarrays` creates a block of code that
+looks like this (implementation for 3d shown):
 
 ```
     stridedest1 = stride(dest, 1)
@@ -170,22 +171,29 @@ From the simple code snippet above, `@forarrays` creates a block of code that lo
     stridesrc1  = stride(src, 1)
     stridesrc2  = stride(src, 2)
     stridesrc3  = stride(src, 3)
+    pindexesdest = parsedindexes(dest)
+    pindexessrc = parsedindexes(src)
     for i3 = 1:size(dest, 3)
-        odest3 = dest.first_index + (dest.indexes[3][i3]-1)*stridedest3
-        osrc3  = src.first_index + (src.indexes[3][i3]-1)*stridesrc3
+        odest3 = sliceoffset(dest) + (index(dest, pindexesdest, 3, i3)-1)*stridedest3
+        osrc3  = sliceoffset(src) + (index(src, pindexessrc, 3, i3)-1)*stridesrc3
         for i2 = 1:size(dest, 2)
-            odest2 = odest3 + (dest.indexes[2][i2]-1)*stridedest2
-            osrc2  = osrc3 + (src.indexes[2][i2]-1)*stridesrc2
+            odest2 = odest3 + (index(dest, pindexesdest, 2, i2)-1)*stridedest2
+            osrc2  = osrc3 + (index(src, pindexessrc, 2, i2)-1)*stridesrc2
             for i1 = 1:size(dest, 1)
-                odest = odest2 + (dest.indexes[1][i1]-1)*stridedest1
-                osrc  = osrc2 + (src.indexes[1][i1]-1)*stridesrc1
+                odest = odest2 + (index(dest, pindexesdest, 1, i1)-1)*stridedest1
+                osrc  = osrc2 + (index(src, pindexessrc, 1, i1)-1)*stridesrc1
                 dest.parent[odest] = src.parent[osrc]
             end
         end
     end
 ```
 
-The key to its speed is the tightness of this inner loop. Note also that no memory is allocated.
+The key to its speed is the tightness of this inner loop. Note also that no
+memory is allocated.
+
+The internal functions `parsedindexes`, `sliceoffset`, and `index` all work
+together to handle plain arrays, subarrays, and sliced arrays.
+
 
 ### How `@forcartesian` works
 
