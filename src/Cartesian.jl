@@ -124,6 +124,7 @@ end
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
 
 function inlineanonymous(ex::Expr, val)
+    # Inline the anonymous-function part
     if ex.head != :->
         error("Not an anonymous function")
     end
@@ -132,7 +133,17 @@ function inlineanonymous(ex::Expr, val)
     end
     sym = ex.args[1]
     ex = ex.args[2]
-    replace(copy(ex), sym, val)
+    exout = replace(copy(ex), sym, val)
+    # Inline ternary expressions
+    exout = poplinenum(exout)
+    if exout.head == :if
+        try
+            tf = eval(exout.args[1])
+            exout = tf?exout.args[2]:exout.args[3]
+        catch
+        end
+    end
+    exout
 end
 
 replace(s::Symbol, sym::Symbol, val) = (s == sym) ? val : s
@@ -140,6 +151,25 @@ replace(n::Number, sym::Symbol, val) = n
 function replace(ex::Expr, sym::Symbol, val)
     for i in 1:length(ex.args)
         ex.args[i] = replace(ex.args[i], sym, val)
+    end
+    ex
+end
+
+function poplinenum(ex::Expr)
+    if ex.head == :block
+        if length(ex.args) == 1
+            return ex.args[1]
+        elseif length(ex.args) == 2 && ex.args[1].head == :line
+            return ex.args[2]
+        end
+    end
+    ex
+end
+
+# Perhaps the compiler does this?
+function popplus0(ex::Expr)
+    if ex.head == :call && (ex.args[1] == :+ || ex.args[1] == :-) && ex.args[3] == 0
+        return ex.args[2]
     end
     ex
 end
