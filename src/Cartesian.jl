@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export @forcartesian, @nextract, @nlookup, @nloops, @nref, @nrefshift
+export linear, @forcartesian, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -121,7 +121,33 @@ function _nextract(N::Int, esym::Symbol, isym::Symbol)
     Expr(:block, aexprs...)
 end
 
+# Convert to a linear index
+macro nlinear(N, A, itersym)
+    _nlinear(N, A, itersym)
+end
+
+function _nlinear(N::Int, A::Symbol, itersym::Symbol)
+    Expr(:call, :linear, :($(esc(A))), [Expr(:escape, namedvar(itersym, i)) for i = 1:N]...)
+end
+
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
+
+linear(A::Array, i1::Integer) = A, i1
+linear(A::Array, i1::Integer, i2::Integer) = A, i1+size(A,1)*(i2-1)
+linear(A::Array, i1::Integer, i2::Integer, i3::Integer) = A, i1+size(A,1)*(i2-1+size(A,2)*(i3-1))
+linear(A::Array, i1::Integer, i2::Integer, i3::Integer, i4::Integer) = A, i1+size(A,1)*(i2-1+size(A,2)*(i3-1+size(A,3)*(i4-1)))
+linear(A::Array, i1::Integer, i2::Integer, i3::Integer, i4::Integer, i5::Integer) = A, i1+size(A,1)*(i2-1+size(A,2)*(i3-1+size(A,3)*(i4-1+size(A,4)*(i5-1))))
+
+linear{T}(s::SubArray{T,1}, i::Integer) =
+    s.parent, s.first_index + (i-1)*s.strides[1]
+linear{T}(s::SubArray{T,2}, i::Integer, j::Integer) =
+    s.parent, s.first_index + (i-1)*s.strides[1] + (j-1)*s.strides[2]
+linear{T}(s::SubArray{T,3}, i::Integer, j::Integer, k::Integer) =
+    s.parent, s.first_index + (i-1)*s.strides[1] + (j-1)*s.strides[2] + (k-1)*s.strides[3]
+linear{T}(s::SubArray{T,4}, i::Integer, j::Integer, k::Integer, l::Integer) =
+    s.parent, s.first_index + (i-1)*s.strides[1] + (j-1)*s.strides[2] + (k-1)*s.strides[3] + (l-1)*s.strides[4]
+linear{T}(s::SubArray{T,5}, i::Integer, j::Integer, k::Integer, l::Integer, m::Integer) =
+    s.parent, s.first_index + (i-1)*s.strides[1] + (j-1)*s.strides[2] + (k-1)*s.strides[3] + (l-1)*s.strides[4] + (m-1)*s.strides[5]
 
 function inlineanonymous(ex::Expr, val)
     # Inline the anonymous-function part

@@ -80,3 +80,10 @@ Cartesian.@nextract 2 k I
 j1 = 1
 j2 = 1
 @assert (Cartesian.@nlookup 2 A k j) == A[i1, i2]
+
+A = reshape(1:120, 3, 4, 10)
+i1 = 2
+i2 = 2
+i3 = 7
+p, index = Cartesian.@nlinear 3 A i
+@assert index == A[i1, i2, i3]
