@@ -64,3 +64,19 @@ t = @elapsed loopsum(S)
 @assert t < 3tbase
 t = @elapsed loopsum2(S)
 @assert t < 3tbase
+
+A = reshape(1:15, 3, 5)
+i1 = 2
+i2 = 3
+@assert (Cartesian.@nref 2 A i) == A[i1, i2]
+j1 = -1
+j2 = 2
+@assert (Cartesian.@nrefshift 2 A i j) == A[i1+j1, i2+j2]
+@assert (Cartesian.@nrefshift 2 A i d->(d==2)?1:0) == A[i1, i2+1]
+I = ([i1], [i2])
+Cartesian.@nextract 2 k I
+@assert k1 == [i1]
+@assert k2 == [i2]
+j1 = 1
+j2 = 1
+@assert (Cartesian.@nlookup 2 A k j) == A[i1, i2]
