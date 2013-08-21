@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export @forcartesian, @nloops, @nref, @nrefshift
+export @forcartesian, @nextract, @nlookup, @nloops, @nref, @nrefshift
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -102,7 +102,23 @@ function _nrefshift(N::Int, A::Symbol, sym::Symbol, shiftexpr::Expr)
 end
 
 # Generate expression A[ I1[i1], I2[i2], ... ]
+macro nlookup(N, A, indexes, itersym)
+    _nlookup(N, A, indexes, itersym)
+end
+
+function _nlookup(N::Int, A::Symbol, indexes::Symbol, itersym::Symbol)
+    vars = [ :($(namedvar(indexes, i))[$(namedvar(itersym, i))]) for i = 1:N ]
     Expr(:escape, Expr(:ref, A, vars...))
+end
+
+# Make variables esym1, esym2, ... = isym
+macro nextract(N, esym, isym)
+    _nextract(N, esym, isym)
+end
+
+function _nextract(N::Int, esym::Symbol, isym::Symbol)
+    aexprs = [Expr(:escape, Expr(:(=), namedvar(esym, i), :(($isym)[$i]))) for i = 1:N]
+    Expr(:block, aexprs...)
 end
 
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
