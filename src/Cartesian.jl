@@ -84,12 +84,24 @@ function _nref(N::Int, A::Symbol, sym::Symbol)
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
+# Generate expression A[i1+j1, i2+j2, ...]
 macro nrefshift(N, A, sym, shiftexpr)
     _nrefshift(N, A, sym, shiftexpr)
 end
 
+# ... using an offset symbol. This is useful with nested @nloops
+function _nrefshift(N::Int, A::Symbol, iter1::Symbol, iter2::Symbol)
+    vars = [ :($(namedvar(iter1, i))+$(namedvar(iter2, i))) for i = 1:N ]
+    Expr(:escape, Expr(:ref, A, vars...))
+end
+
+# ... using a shiftexpr, e.g., A[i1, i2+1, ...] with d->(d==2)?1:0
 function _nrefshift(N::Int, A::Symbol, sym::Symbol, shiftexpr::Expr)
-    vars = [ :($(namedvar(sym, i))+$(inlineanonymous(shiftexpr, i))) for i = 1:N ]
+    vars = [ popplus0(:($(namedvar(sym, i))+$(inlineanonymous(shiftexpr, i)))) for i = 1:N ]
+    Expr(:escape, Expr(:ref, A, vars...))
+end
+
+# Generate expression A[ I1[i1], I2[i2], ... ]
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
