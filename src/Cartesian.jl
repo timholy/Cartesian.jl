@@ -31,10 +31,32 @@ macro forcartesian(sym, sz, ex)
     end
 end
 
+# Generate nested loops
 macro nloops(N, itersym, rangeexpr, ex)
     _nloops(N, itersym, rangeexpr, ex)
 end
 
+# Range of each loop is determined by an array's size,
+#   for i2 = 1:size(A,2)
+#     for i1 = 1:size(A,1)
+#       ...
+function _nloops(N::Int, itersym::Symbol, arrayforsize::Symbol, body::Expr)
+    ex = Expr(:escape, body)
+    for dim = 1:N
+        itervar = namedvar(itersym, dim)
+        ex = quote
+            for $(esc(itervar)) = 1:size($(esc(arrayforsize)),$dim)
+                $ex
+            end
+        end
+    end
+    ex
+end
+
+# An alternative where the range of each loop is determined by an expression,
+#    for i2 = r,  where r is the result of evaluating d->f(d) for d=2
+# Note that the "anonymous function" is inlined because we pass it as an
+# anonymous function expression
 function _nloops(N::Int, itersym::Symbol, rangeexpr::Expr, body::Expr)
     if rangeexpr.head != :->
         error("Second argument must be an anonymous function expression to compute the range")
@@ -52,19 +74,7 @@ function _nloops(N::Int, itersym::Symbol, rangeexpr::Expr, body::Expr)
     ex
 end
 
-function _nloops(N::Int, itersym::Symbol, arrayforsize::Symbol, body::Expr)
-    ex = Expr(:escape, body)
-    for dim = 1:N
-        itervar = namedvar(itersym, dim)
-        ex = quote
-            for $(esc(itervar)) = 1:size($(esc(arrayforsize)),$dim)
-                $ex
-            end
-        end
-    end
-    ex
-end
-
+# Generate expression A[i1, i2, ...]
 macro nref(N, A, sym)
     _nref(N, A, sym)
 end
