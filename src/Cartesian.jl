@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export @forcartesian, @nloops, @nref
+export @forcartesian, @nloops, @nref, @nrefshift
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -71,6 +71,15 @@ end
 
 function _nref(N::Int, A::Symbol, sym::Symbol)
     vars = [ namedvar(sym, i) for i = 1:N ]
+    Expr(:escape, Expr(:ref, A, vars...))
+end
+
+macro nrefshift(N, A, sym, shiftexpr)
+    _nrefshift(N, A, sym, shiftexpr)
+end
+
+function _nrefshift(N::Int, A::Symbol, sym::Symbol, shiftexpr::Expr)
+    vars = [ :($(namedvar(sym, i))+$(inlineanonymous(shiftexpr, i))) for i = 1:N ]
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
