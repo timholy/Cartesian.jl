@@ -56,7 +56,9 @@ end
 # An alternative where the range of each loop is determined by an expression,
 #    for i2 = r,  where r is the result of evaluating d->f(d) for d=2
 # Note that the "anonymous function" is inlined because we pass it as an
-# anonymous function expression
+# anonymous function expression.
+# It's possible to make the range depend on a set of indexed variables, using the
+# notation i_d which gets translated into i3 for d=3.
 function _nloops(N::Int, itersym::Symbol, rangeexpr::Expr, body::Expr)
     if rangeexpr.head != :->
         error("Second argument must be an anonymous function expression to compute the range")
@@ -172,8 +174,23 @@ function inlineanonymous(ex::Expr, val)
     exout
 end
 
-replace(s::Symbol, sym::Symbol, val) = (s == sym) ? val : s
+# Replace a symbol by a value or a "coded" symbol
+# E.g., for d = 3,
+#    replace(:d, :d, 3) -> 3
+#    replace(:i_d, :d, 3) -> :i3
 replace(n::Number, sym::Symbol, val) = n
+function replace(s::Symbol, sym::Symbol, val)
+    if (s == sym)
+        return val
+    else
+        tail = "_"*string(sym)
+        sstr = string(s)
+        if endswith(sstr, tail)
+            return symbol(sstr[1:end-length(tail)]*string(val))
+        end
+    end
+    s
+end
 function replace(ex::Expr, sym::Symbol, val)
     for i in 1:length(ex.args)
         ex.args[i] = replace(ex.args[i], sym, val)
