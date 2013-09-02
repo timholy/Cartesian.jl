@@ -1,5 +1,6 @@
 import Cartesian
 
+# @nloops with range expression
 for N = 1:4
     @eval begin
         function loopsum{T}(A::StridedArray{T,$N})
@@ -12,6 +13,7 @@ for N = 1:4
     end
 end
 
+# @nloops with size determined by array
 for N = 1:4
     @eval begin
         function loopsum2{T}(A::StridedArray{T,$N})
@@ -65,6 +67,7 @@ t = @elapsed loopsum(S)
 t = @elapsed loopsum2(S)
 @assert t < 3tbase
 
+# @nref, @nrefshift, @nextract, and @nlookup
 A = reshape(1:15, 3, 5)
 i1 = 2
 i2 = 3
@@ -81,9 +84,28 @@ j1 = 1
 j2 = 1
 @assert (Cartesian.@nlookup 2 A k j) == A[i1, i2]
 
+# @nlinear
 A = reshape(1:120, 3, 4, 10)
 i1 = 2
 i2 = 2
 i3 = 7
 p, index = Cartesian.@nlinear 3 A i
 @assert index == A[i1, i2, i3]
+
+# The i_d notation
+i1 = 2
+i2 = -1
+pairs = {}
+Cartesian.@nloops 2 j d->(1-min(0,i_d):4-max(0,i_d)) begin
+    push!(pairs, (j1,j2))
+end
+@assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}
+
+# @nall
+pairs = {}
+Cartesian.@nloops 2 j d->1:4 begin
+    if Cartesian.@nall 2 d->(1 <= j_d+i_d <= 4)
+        push!(pairs, (j1,j2))
+    end
+end
+@assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}

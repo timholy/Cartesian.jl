@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export linear, @forcartesian, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift
+export linear, @forcartesian, @nall, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -121,6 +121,19 @@ end
 function _nextract(N::Int, esym::Symbol, isym::Symbol)
     aexprs = [Expr(:escape, Expr(:(=), namedvar(esym, i), :(($isym)[$i]))) for i = 1:N]
     Expr(:block, aexprs...)
+end
+
+# Check whether variables i1, i2, ... all satisfy criterion
+macro nall(N, criterion)
+    _nall(N, criterion)
+end
+
+function _nall(N::Int, criterion::Expr)
+    if criterion.head != :->
+        error("Second argument must be an anonymous function expression yielding the criterion")
+    end
+    conds = [Expr(:escape, inlineanonymous(criterion, i)) for i = 1:N]
+    Expr(:&&, conds...)
 end
 
 # Convert to a linear index
