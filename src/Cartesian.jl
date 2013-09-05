@@ -86,6 +86,11 @@ function _nref(N::Int, A::Symbol, sym::Symbol)
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
+function _nref(N::Int, A::Symbol, ex::Expr)
+    vars = [ inlineanonymous(ex,i) for i = 1:N ]
+    Expr(:escape, Expr(:ref, A, vars...))
+end
+
 # Generate expression A[i1+j1, i2+j2, ...]
 macro nrefshift(N, A, sym, shiftexpr)
     _nrefshift(N, A, sym, shiftexpr)
