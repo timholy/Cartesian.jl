@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export linear, @forcartesian, @nall, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift
+export linear, @forcartesian, @nall, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift, @ntuple, @indexedvariable
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -118,6 +118,20 @@ function _nlookup(N::Int, A::Symbol, indexes::Symbol, itersym::Symbol)
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
+macro ntuple(N, ex)
+    _ntuple(N, ex)
+end
+
+function _ntuple(N::Int, sym::Symbol)
+    vars = [ namedvar(sym, i) for i = 1:N ]
+    Expr(:escape, Expr(:tuple, vars...))
+end
+
+function _ntuple(N::Int, ex::Expr)
+    vars = [ inlineanonymous(ex,i) for i = 1:N ]
+    Expr(:escape, Expr(:tuple, vars...))
+end
+
 # Make variables esym1, esym2, ... = isym
 macro nextract(N, esym, isym)
     _nextract(N, esym, isym)
@@ -151,6 +165,17 @@ function _nlinear(N::Int, A::Symbol, itersym::Symbol)
 end
 
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
+
+macro indexedvariable(N, sym)
+    _indexedvariable(N, sym)
+end
+
+# _indexedvariable(ex::Expr, sym::Symbol) = _indexedvariable(eval(ex), sym)
+
+function _indexedvariable(i::Integer, sym::Symbol)
+    nv = namedvar(sym, i)
+    :($(esc(nv)))
+end
 
 linear(A::Array, i1::Integer) = A, i1
 linear(A::Array, i1::Integer, i2::Integer) = A, i1+size(A,1)*(i2-1)
