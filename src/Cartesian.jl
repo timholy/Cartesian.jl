@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export linear, @forcartesian, @nall, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift, @ntuple, @indexedvariable
+export linear, @forcartesian, @indexedvariable, @nall, @nexprs, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift, @ntuple
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -130,6 +130,16 @@ end
 function _ntuple(N::Int, ex::Expr)
     vars = [ inlineanonymous(ex,i) for i = 1:N ]
     Expr(:escape, Expr(:tuple, vars...))
+end
+
+# Generate N expressions
+macro nexprs(N, ex)
+    _nexprs(N, ex)
+end
+
+function _nexprs(N::Int, ex::Expr)
+    exs = [ inlineanonymous(ex,i) for i = 1:N ]
+    Expr(:escape, Expr(:block, exs...))
 end
 
 # Make variables esym1, esym2, ... = isym

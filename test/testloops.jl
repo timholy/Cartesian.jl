@@ -109,3 +109,13 @@ Cartesian.@nloops 2 j d->1:4 begin
     end
 end
 @assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}
+
+# @nexprs
+println("About to check nexprs")
+A = reshape(1:20*7, 20, 7)
+indexes = (2:5:20,3:7)
+strds = strides(A)
+i1 = 2
+i2 = 3
+ind = 1
+@assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i1],indexes[2][i2]])
