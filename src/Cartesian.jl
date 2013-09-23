@@ -152,6 +152,11 @@ function _nextract(N::Int, esym::Symbol, isym::Symbol)
     Expr(:block, aexprs...)
 end
 
+function _nextract(N::Int, esym::Symbol, ex::Expr)
+    aexprs = [Expr(:escape, Expr(:(=), namedvar(esym, i), inlineanonymous(ex,i))) for i = 1:N]
+    Expr(:block, aexprs...)
+end
+
 # Check whether variables i1, i2, ... all satisfy criterion
 macro nall(N, criterion)
     _nall(N, criterion)
@@ -172,6 +177,10 @@ end
 
 function _nlinear(N::Int, A::Symbol, itersym::Symbol)
     Expr(:call, :linear, :($(esc(A))), [Expr(:escape, namedvar(itersym, i)) for i = 1:N]...)
+end
+
+function _nlinear(N::Int, A::Symbol, ex::Expr)
+    Expr(:call, :linear, :($(esc(A))), [Expr(:escape, inlineanonymous(ex, i)) for i = 1:N]...)
 end
 
 namedvar(base::Symbol, ext) = symbol(string(base)*string(ext))
