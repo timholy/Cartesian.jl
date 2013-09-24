@@ -2,7 +2,7 @@ module Cartesian
 
 import Base: replace
 
-export linear, @forcartesian, @indexedvariable, @nall, @nexprs, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift, @ntuple
+export cartesian_linear, linear, @forcartesian, @indexedvariable, @nall, @nexprs, @nextract, @nlinear, @nlookup, @nloops, @nref, @nrefshift, @ntuple
 
 macro forcartesian(sym, sz, ex)
     idim = gensym()
@@ -29,6 +29,14 @@ macro forcartesian(sym, sz, ex)
             end
         end
     end
+end
+
+function cartesian_linear(A::AbstractArray, I::Vector{Int})
+    k = 0
+    for j = length(I):-1:1
+        k = size(A, j)*k + I[j]-1
+    end
+    k += 1
 end
 
 # Generate nested loops
