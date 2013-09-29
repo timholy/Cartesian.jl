@@ -53,7 +53,7 @@ The general practice is to read from left to right, which is why
 to the left and the range is to the right) whereas `@nref` is `@nref 3 A i` (as
 in `A[i1,i2,i3]`, where the array comes first).
 
-There are two important additional general points described below.
+There are two additional important general points described below.
 
 #### Supplying the dimensionality from functions
 
@@ -120,7 +120,7 @@ lap[i,j] = A[i+1,j] + A[i-1,j] + A[i,j+1] + A[i,j-1] - 4A[i,j]
 One obvious issue with this formula is how to handle the edges, where `A[i-1,j]`
 might not exist. There are several strategies we can pursue, some of which will
 be described below. As a first illustration of anonymous-function expressions,
-let's just "punt" on the edges and just skip the edges. In 2d we might write
+let's "punt" on the edges and just skip them. In 2d we might write
 such code as
 
 ```
@@ -130,6 +130,8 @@ for i2 = 2:size(A,2)-1
     end
 end
 ```
+
+where one should note that the range `2:size(A,2)-1` omits the first and last index.
 
 In `Cartesian` this can be written in the following way:
 
@@ -163,8 +165,8 @@ A[i1+j1, i2+j2, i3+j3]
 ## A complete example: implementing `imfilter`
 
 With this, we have enough machinery to implement a simple multidimensional
-function `imfilter`, which computes the correlation (like a convolution) between
-an array `A` and a filtering kernel `kern`. We're going to require that
+function `imfilter`, which computes the correlation (similar to a convolution)
+between an array `A` and a filtering kernel `kern`. We're going to require that
 `kernel` has odd-valued sizes along each dimension, say of size `2*w[d]+1`, and
 suppose that there is a function `padarray` that pads `A` with width `w[d]`
 along each edge in dimension `d`, using whatever boundary conditions the user
@@ -177,7 +179,7 @@ for N = 1:5
     @eval begin
         function imfilter{T}(A::Array{T,$N}, kern::Array{T,$N}, boundaryargs...)
             w = [div(size(kern, d), 2) for d = 1:$N]
-            for i = 1:$N
+            for d = 1:$N
                 if size(kern, d) != 2*w[d]+1
                     error("kernel must have odd size in each dimension")
                 end
@@ -220,16 +222,18 @@ of the `@nref` macro.
 
 We could implement the laplacian with `imfilter`, but that would be quite
 wasteful: we don't need the "corners" of the 3x3x... grid, just its edges and
-center. Consequently, we can write a considerably faster algorithm. Implementing
+center. Consequently, we can write a considerably faster algorithm, where the
+advantage over `imfilter` would grow rapidly with dimensionality. Implementing
 this algorithm will further illustrate the flexibility of anonymous-function
 range expressions as well as another key macro, `@nexprs`.
 
-In two dimensions, we'll generate the following code:
+In two dimensions, we'll generate the following code, which uses "replicating
+boundary conditions" to handle the edges gracefully:
 
 ```
 function laplacian{T}(A::Array{T,$N})
     B = similar(A)
-    @nloops $N i A begin
+    for i2 = 1:size(A,2), i1 = 1:size(A,1)
         tmp = zero(T)
         tmp += i1 < size(A,1) ? A[i1+1,i2] : A[i1,i2]
         tmp += i2 < size(A,2) ? A[i1,i2+1] : A[i1,i2]
@@ -240,7 +244,6 @@ function laplacian{T}(A::Array{T,$N})
     B
 end
 ```
-This uses "replicating boundary conditions" to handle the edges gracefully.
 
 To generate those terms with all but one of the indices unaltered, we'll use
 an anonymous function like this:
@@ -262,11 +265,11 @@ for N = 1:5
                 tmp = zero(T)
                 # Do the shift by +1.
                 @nexprs $N d1->begin
-                    tmp += (i_d1 < size(A,d1) ? (@nref $N A d2->(d2==d1)?i_d2+1:i_d2) : (@nref $N A i)
+                    tmp += (i_d1 < size(A,d1)) ? (@nref $N A d2->(d2==d1)?i_d2+1:i_d2) : (@nref $N A i)
                 end
                 # Do the shift by -1.
                 @nexprs $N d1->begin
-                    tmp += (i_d1 > 1 ? (@nref $N A d2->(d2==d1)?i_d2-1:i_d2) : (@nref $N A i)
+                    tmp += (i_d1 > 1) ? (@nref $N A d2->(d2==d1)?i_d2-1:i_d2) : (@nref $N A i)
                 end
                 # Subtract the center and store the result
                 (@nref $N B i) = tmp - 2*$N*(@nref $N A i)
@@ -320,10 +323,14 @@ Given an `Array` or `SubArray` `A`, `P, k = @nlinear N A indexexpr` generates an
 array `P` and a linear index `k` for which `P[k]` is equivalent to
 `@nref N A indexexpr`. Use this when it would be most convenient to implement an
 algorithm
-using linear-indexing. This can be convenient when an anonymous-function
-expression cannot not be evaluated at compile-time. For example, using an
+using linear-indexing.
+
+This is particularly useful when an anonymous-function
+expression cannot be evaluated at compile-time. For example, using an
 example from `Images`, suppose you wanted to iterate over each pixel and perform
-a calculation base on the color dimension of an array:
+a calculation base on the color dimension of an array. In particular, we have a
+function `rgb` which generates an RGB color from 3 numbers. We can do this for
+each pixel of the array in the following way:
 
 ```
 sz = [size(img,d) for d = 1:ndims(img)]
@@ -424,8 +431,8 @@ This has more overhead than the direct for-loop approach of `@nloops`, but for m
 ## Performance improvements for SubArrays
 
 Julia currently lacks efficient linear-indexing for generic `SubArrays`.
-Consequently, cartesian indexing is currently the only high-performance way to
+Consequently, cartesian indexing is the only high-performance way to
 address elements of `SubArray`s. Many simple algorithms, like `sum`, can have
 their performance boosted immensely by implementing them for `SubArray`s using
-cartesian indexing. For example, in 3d it's easy to get a boost on the scale of
-100-fold this way.
+`Cartesian`. For example, in 3d it's easy to get a boost on the scale of
+100-fold.
