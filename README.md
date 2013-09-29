@@ -1,21 +1,375 @@
 # Cartesian.jl
 
-Fast multidimensional iteration for the Julia language.
+Fast multidimensional algorithms for the Julia language.
 
-This package provides macros that currently appear to be the fastest way to implement several multidimensional algorithms in Julia.
+This package provides macros that currently appear to be the most performant way
+to implement numerous multidimensional algorithms in Julia.
+
+## Caution
+
+In practice, `Cartesian` effectively introduces a separate "dialect" of
+Julia. There is reason to hope that the main language will eventually
+support much of this functionality, and if/when that happens some or all of this
+should become obsolete. In the meantime, this package appears to be the most
+powerful way to write efficient multidimensional algorithms.
 
 ## Installation
 
 Install with the package manager, `Pkg.add("Cartesian")`.
 
+## Principles of usage
 
-## Usage
+Most macros in this package work like this:
+```
+@nloops 3 i A begin
+    s += @nref 3 A i
+end
+```
+which generates the following code:
+```
+for i3 = 1:size(A,3)
+    for i2 = 1:size(A,2)
+        for i1 = 1:size(A,1)
+            s += A[i1,i2,i3]
+        end
+    end
+end
+```
+The syntax of `@nloops` is as follows:
 
-Here's a simple example:
+- The first argument must be an integer (_not_ a variable) specifying the number
+of loops.
+- The second argument is the symbol-prefix used for the iterator variable. Here
+we used `i`, and variables `i1, i2, i3` were generated.
+- The third argument specifies the range for each iterator variable. If you use
+a variable (symbol) here, it's taken as `1:size(A,dim)`. More flexibly, you can
+use the anonymous-function expression syntax described below.
+- The last argument is the body of the loop. Here, that's what appears between
+the `begin...end`.
 
-```julia
-using Cartesian
+`@nref` follows a similar pattern, generating `A[i1,i2,i3]` from `@nref 3 A i`.
+The general practice is to read from left to right, which is why
+`@nloops` is `@nloops 3 i A expr` (as in `for i2 = 1:size(A,2)`, where `i2` is
+to the left and the range is to the right) whereas `@nref` is `@nref 3 A i` (as
+in `A[i1,i2,i3]`, where the array comes first).
 
+There are two important additional general points described below.
+
+#### Supplying the dimensionality from functions
+
+The first argument to both of these macros is the dimensionality, which must be
+an integer. When you're writing a function that you intend to work in multiple
+dimensions, this may not be something you want to hard-code. Fortunately, it's
+straightforward to use an `@eval` construct, like this:
+
+```
+for N = 1:4
+    @eval begin
+        function laplacian{T}(A::Array{T,$N})
+            B = similar(A)
+            @nloops $N i A begin
+                ...
+            end
+        end
+    end
+end
+```
+
+This would generate versions of `laplacian` for dimensions 1 through 4. While
+it's somewhat more awkward, you can generate truly arbitrary-dimension functions
+using a wrapper that keeps track of whether it has already compiled a version of
+the function for different dimensionalities and data types:
+
+```
+let _mysum_defined = Dict{Any, Bool}()
+global mysum
+function mysum{T,N}(A::StridedArray{T,N})
+    def = get(_mysum_defined, typeof(A), false)
+    if !def
+        ex = quote
+            function _mysum{T}(A::StridedArray{T,$N})
+                s = zero(T)
+                @nloops $N i A begin
+                    s += @nref $N A i
+                end
+                s
+            end
+        end
+        eval(current_module(), ex)
+        _mysum_defined[typeof(A)] = true
+    end
+    _mysum(A)
+end
+end
+```
+
+In addition to being longer than the first version, there's a (small)
+performance price for checking the dictionary.
+
+#### Anonymous-function expressions as macro arguments
+
+Perhaps the single most powerful feature in `Cartesian` is the ability to supply
+anonymous-function expressions to many macros. Let's consider implementing the
+`laplacian` function mentioned above. The (discrete) laplacian of a two
+dimensional array would be calculated as
+
+```
+lap[i,j] = A[i+1,j] + A[i-1,j] + A[i,j+1] + A[i,j-1] - 4A[i,j]
+```
+
+One obvious issue with this formula is how to handle the edges, where `A[i-1,j]`
+might not exist. There are several strategies we can pursue, some of which will
+be described below. As a first illustration of anonymous-function expressions,
+let's just "punt" on the edges and just skip the edges. In 2d we might write
+such code as
+
+```
+for i2 = 2:size(A,2)-1
+    for i1 = 2:size(A,1)-1
+        lap[i1,i2] = ...
+    end
+end
+```
+
+In `Cartesian` this can be written in the following way:
+
+```
+@nloops 2 i d->(2:size(A,d)-1) begin
+    (@nref 2 lap i) = ...
+end
+```
+
+Note here that the range argument is being supplied as an anonymous function. A
+key point is that this anonymous function is _evaluated when the macro runs_.
+(Whatever symbol appears as the variable of the anonymous function, here `d`, is
+looped over the dimensionality.) Effectively, this expression gets _inlined_,
+and hence generates exactly the code above with no extra runtime overhead.
+
+There is an important bit of extra syntax associated with these expressions: the
+expression `i_d`, for `d=3`, is translated into `i3`. Suppose we have two sets
+of variables, a "main" group of indices `i1`, `i2`, and `i3`, and an "offset" group
+of indices `j1`, `j2`, and `j3`. Then the expression
+
+```
+@nref 3 A d->(i_d+j_d)
+```
+
+gets translated into
+
+```
+A[i1+j1, i2+j2, i3+j3]
+```
+
+## A complete example: implementing `imfilter`
+
+With this, we have enough machinery to implement a simple multidimensional
+function `imfilter`, which computes the correlation (like a convolution) between
+an array `A` and a filtering kernel `kern`. We're going to require that
+`kernel` has odd-valued sizes along each dimension, say of size `2*w[d]+1`, and
+suppose that there is a function `padarray` that pads `A` with width `w[d]`
+along each edge in dimension `d`, using whatever boundary conditions the user
+desires.
+
+A complete implementation of `imfilter` is:
+
+```
+for N = 1:5
+    @eval begin
+        function imfilter{T}(A::Array{T,$N}, kern::Array{T,$N}, boundaryargs...)
+            w = [div(size(kern, d), 2) for d = 1:$N]
+            for i = 1:$N
+                if size(kern, d) != 2*w[d]+1
+                    error("kernel must have odd size in each dimension")
+                end
+            end
+            Apad = padarray(A, w, boundaryargs...)
+            B = similar(A)
+            @nloops $N i A begin
+                # Compute the filtered value
+                tmp = zero(T)
+                @nloops $N j kern begin
+                    tmp += (@nref $N Apad d->(i_d+j_d-1))*(@nref $N kern j)
+                end
+                # Store the result
+                (@nref $N B i) = tmp     # note the ()
+            end
+            B
+        end
+    end
+end
+```
+
+The line
+
+```
+tmp += (@nref $N Apad d->(i_d+j_d-1))*(@nref $N kern j)
+```
+
+gets translated into
+
+```
+tmp += Apad[i1+j1-1, i2+j2-1, ...] * kern[j1, j2, ...]
+```
+
+We also note that the assignment to `B` requires parenthesis around the `@nref`,
+because otherwise the expression `i = tmp` would be passed as the final argument
+of the `@nref` macro.
+
+
+## A complete example: implementing `laplacian`
+
+We could implement the laplacian with `imfilter`, but that would be quite
+wasteful: we don't need the "corners" of the 3x3x... grid, just its edges and
+center. Consequently, we can write a considerably faster algorithm. Implementing
+this algorithm will further illustrate the flexibility of anonymous-function
+range expressions as well as another key macro, `@nexprs`.
+
+In two dimensions, we'll generate the following code:
+
+```
+function laplacian{T}(A::Array{T,$N})
+    B = similar(A)
+    @nloops $N i A begin
+        tmp = zero(T)
+        tmp += i1 < size(A,1) ? A[i1+1,i2] : A[i1,i2]
+        tmp += i2 < size(A,2) ? A[i1,i2+1] : A[i1,i2]
+        tmp += i1 > 1 ? A[i1-1,i2] : A[i1,i2]
+        tmp += i2 > 1 ? A[i1,i2-1] : A[i1,i2]
+        B[i1,i2] = tmp - 4*A[i1,i2]
+    end
+    B
+end
+```
+This uses "replicating boundary conditions" to handle the edges gracefully.
+
+To generate those terms with all but one of the indices unaltered, we'll use
+an anonymous function like this:
+
+```
+d2->(d2 == d1) ? i_d2+1 : i_d2
+```
+
+which shifts by 1 only when `d2 == d1`. We'll use the macro `@nexprs`
+(documented below) to generate the `N` expressions we need. Here is the complete
+implementation for dimensions 1 through 5:
+
+```
+for N = 1:5
+    @eval begin
+        function laplacian{T}(A::Array{T,$N})
+            B = similar(A)
+            @nloops $N i A begin
+                tmp = zero(T)
+                # Do the shift by +1.
+                @nexprs $N d1->begin
+                    tmp += (i_d1 < size(A,d1) ? (@nref $N A d2->(d2==d1)?i_d2+1:i_d2) : (@nref $N A i)
+                end
+                # Do the shift by -1.
+                @nexprs $N d1->begin
+                    tmp += (i_d1 > 1 ? (@nref $N A d2->(d2==d1)?i_d2-1:i_d2) : (@nref $N A i)
+                end
+                # Subtract the center and store the result
+                (@nref $N B i) = tmp - 2*$N*(@nref $N A i)
+            end
+            B
+        end
+    end
+end
+```
+
+
+## Macro reference
+
+### Core macros
+
+```
+@nloops N itersym rangeexpr bodyexpr
+```
+Generate `N` nested loops, using `itersym` as the prefix for the iteration variables. `rangeexpr` may be an anonymous-function expression, or a simple symbol `var` in which case the range is `1:size(var,d)` for dimension `d`.
+
+<br />
+```
+@nref N A indexexpr
+```
+Generate expressions like `A[i1,i2,...]`. `indexexpr` can either be an iteration-symbol prefix, or an anonymous-function expression.
+
+<br />
+```
+@nexpr N expr
+```
+Generate `N` expressions. `expr` should be an anonymous-function expression. See the `laplacian` example above.
+
+<br />
+```
+@nextract N esym isym
+```
+Given a tuple or vector `I` of length `N`, `@nextract 3 I I` would generate the expression `I1, I2, I3 = I`, thereby extracting each element of `I` into a separate variable.
+
+<br />
+```
+@nall N expr
+```
+`@nall 3 d->(i_d > 1)` would generate the expression
+`(i1 > 1 && i2 > 1 && i3 > 1)`. This can be convenient for bounds-checking.
+
+<br />
+```
+P, k = @nlinear N A indexexpr
+```
+Given an `Array` or `SubArray` `A`, `P, k = @nlinear N A indexexpr` generates an
+array `P` and a linear index `k` for which `P[k]` is equivalent to
+`@nref N A indexexpr`. Use this when it would be most convenient to implement an
+algorithm
+using linear-indexing. This can be convenient when an anonymous-function
+expression cannot not be evaluated at compile-time. For example, using an
+example from `Images`, suppose you wanted to iterate over each pixel and perform
+a calculation base on the color dimension of an array:
+
+```
+sz = [size(img,d) for d = 1:ndims(img)]
+cd = colordim(img)  # determine which dimension of img represents color
+sz[cd] = 1          # we'll "iterate" over color separately
+strd = stride(img, cd)
+@nextract $N sz sz
+A = data(img)
+@nloops $N i d->1:sz_d begin
+    P, k = @nlinear $N A i
+    rgbval = rgb(P[k], P[k+strd], P[k+2strd])
+end
+```
+
+It appears to be difficult to generate code like this just using `@nref`,
+because the expression `d->(d==cd)` could not be evaluated at compile-time.
+
+
+### Additional macros
+
+```
+@ntuple N itersym
+@ntuple N expr
+```
+Generates an `N`-tuple from a symbol prefix (e.g., `(i1,i2,...)`) or an anonymous-function expression.
+
+```
+@nrefshift N A i j
+```
+Generates `A[i1+j1,i2+j2,...]`. This is legacy from before `@nref` accepted anonymous-function expressions.
+
+```
+@nlookup N A I i
+```
+Generates `A[I1[i1], I2[i2], ...]`. This can also be easily achieved with `@nref`.
+
+```
+@indexedvariable N i
+```
+Generates the expression `iN`, e.g., `@indexedvariable 2 i` would generate `i2`.
+
+```
+@forcartesian itersym sz bodyexpr
+```
+This is the oldest macro in the collection, and quite an outlier in terms of functionality:
+```
 sz = [5,3]
 @forcartesian c sz begin
     println(c)
@@ -41,162 +395,6 @@ This generates the following output:
 [5, 3]
 ```
 
-And here's a demonstration of the performance improvements one can get with another macro, `@forarrays`:
-```
-A = rand(1000,1001,50);
-X = zeros(900,840,53);
-sA = sub(A, 7:800, 50:513, 2:49);
-sX = sub(X, 12+(1:size(sA,1)), 3+(1:size(sA,2)), 4+(1:size(sA,3)));
-
-julia> copy!(sX, sA);
-
-julia> X1 = copy(X);
-
-julia> @time copy!(sX, sA);
-elapsed time: 15.947416695 seconds (3738479504 bytes allocated)
-
-julia> fill!(X, 0);
-
-julia> using Cartesian
-
-julia> import Base.copy!
-
-julia> for N = 1:5
-           @eval begin
-               function copy!{R,S}(dest::AbstractArray{R,$N}, src::AbstractArray{S,$N})
-                   @forarrays $N o i dest src begin
-                       parent(dest)[odest] = parent(src)[osrc]
-                   end
-                   return dest
-               end
-           end
-       end
-
-julia> copy!(sX, sA);
-
-julia> X == X1
-true
-
-julia> @time copy!(sX, sA);
-elapsed time: 0.175267421 seconds (2512 bytes allocated)
-```
-In this case, it's 100 times faster and far more memory efficient.
-
-
-With `@forarrays`, the arguments appear in the following order:
-- `N`, the dimensionality. This must be an *integer*, not a symbol, which is why
-we put this in an `@eval` loop. See `test/tests.jl` for an example of how to
-create a wrapper for arbitrary dimensionality.
-- `o`, the prefix for the linear-indexing (offset) variable. Each array
-(mentioned later) will have its own offset variable defined (see `odest` and
-`osrc` in the code snippet above). Note that for `SubArray`s, these are relative
-to the *parent* array, which is why the indexing operations inside the loop are
-written as `parent(A)[o]`.
-- `i`, the prefix for the coordinate variables. In three dimensions there will
-be 3 such variables created, `i1`, `i2`, and `i3`.
-- A list of the arrays for which you'd like to create offset variables
-- Last, the expression you want in the inner loop (inside the `begin..end`).
-
-There's also a variant, `@forrangearrays`, that lets you supply a subset of the coordinate range:
-```
-@forrangearrays 3 o i d->2:size(A,d)-1 A begin
-    ...
-end
-```
-would skip the edges of `A`.
-
-These macros also create some additional variables, e.g., `strideA3`, which can be useful for addressing neighboring points. See below for details.
-
-The most flexible of these related macros is `@forindexes`, which can be used like this:
-```
-indexes = Vector{Int}[[3,4,5,1,2],[5,3,1,6,4,2]]
-A = zeros(5,6)
-k = 1
-@forindexes 2 o i indexes A begin
-    A[oA] = k
-    k += 1
-end
-
-julia> A
-5x6 Float64 Array:
- 14.0  29.0   9.0  24.0  4.0  19.0
- 15.0  30.0  10.0  25.0  5.0  20.0
- 11.0  26.0   6.0  21.0  1.0  16.0
- 12.0  27.0   7.0  22.0  2.0  17.0
- 13.0  28.0   8.0  23.0  3.0  18.0
-```
-Note that this example is the equivalent of `A[indexes[1],indexes[2]] = 1:30`, but in general you can use `@forindexes` in situations in which you'd rather not have to allocate the right-hand side (or any other temporaries).
-
-The general syntax is the following:
-```
-@forindexes N o i indexesA A indexesB B ... begin
-    expr
-end
-```
-If you want this to be safe for `SubArray`s, you should do something like this:
-```
-ind = parentsubindexes(A)
-@forindexes $N o i ind A begin
-    parent(A)[oA] = val
-end
-```
-This properly handles `slice`s, whereas
-```
-ind = parentindexes(A)
-P = parent(A)
-@forindexes $N o i ind P begin
-    P[oP] = val   # WRONG!
-end
-```
-does not. Also, if you're passing indexes into a function as an argument, make sure you [force specialization on each indexes argument](https://github.com/JuliaLang/julia/issues/4090).
-
-Note that you only need to supply as many index/array pairs as is required to set strides and offsets; if `A`, `B`, and `C` are identical in terms of their indexing, size, and strides, then the following suffices:
-```
-@forindexes N o i indexesA A begin
-    C[oA] = A[oA] + B[oA]
-end
-```
-This will be more efficient because only one set of offset variables needs to be constructed (see below).  For functions with a tight inner loop, `@forindexes` is slower than `@forarrays` because an additional lookup needs to be performed.
-
-
-### How `@forarrays` works
-
-From the simple code snippet above, `@forarrays` creates a block of code that
-looks like this (implementation for 3d shown):
-
-```
-    stridedest1 = stride(dest, 1)
-    stridedest2 = stride(dest, 2)
-    stridedest3 = stride(dest, 3)
-    stridesrc1  = stride(src, 1)
-    stridesrc2  = stride(src, 2)
-    stridesrc3  = stride(src, 3)
-    pindexesdest = parsedindexes(dest)
-    pindexessrc = parsedindexes(src)
-    for i3 = 1:size(dest, 3)
-        odest3 = sliceoffset(dest) + (index(dest, pindexesdest, 3, i3)-1)*stridedest3
-        osrc3  = sliceoffset(src) + (index(src, pindexessrc, 3, i3)-1)*stridesrc3
-        for i2 = 1:size(dest, 2)
-            odest2 = odest3 + (index(dest, pindexesdest, 2, i2)-1)*stridedest2
-            osrc2  = osrc3 + (index(src, pindexessrc, 2, i2)-1)*stridesrc2
-            for i1 = 1:size(dest, 1)
-                odest = odest2 + (index(dest, pindexesdest, 1, i1)-1)*stridedest1
-                osrc  = osrc2 + (index(src, pindexessrc, 1, i1)-1)*stridesrc1
-                dest.parent[odest] = src.parent[osrc]
-            end
-        end
-    end
-```
-
-The key to its speed is the tightness of this inner loop. Note also that no
-memory is allocated.
-
-The internal functions `parsedindexes`, `sliceoffset`, and `index` all work
-together to handle plain arrays, subarrays, and sliced arrays.
-
-
-### How `@forcartesian` works
-
 From the simple example above, `@forcartesian` generates a block of code like this:
 
 ```julia
@@ -220,58 +418,14 @@ if !(isempty(sz) || prod(sz) == 0)
 end
 ```
 
-In tests where `m` and `n` are a few hundred and the loop code is very tight, just `counter += 1`, this is still about 5 times slower than a hand-coded example:
-```julia
-for j = 1:n
-    for i = 1:m
-        counter += 1
-    end
-end
-```
-However, it's about 4-fold faster than `Grid`'s `Counter`, which until now seemed to be the reigning champion.
-Compared to the hand-written loop, the advantage is that you get a vector `c` out of it, which can be used to iterate over any number of dimensions.
+This has more overhead than the direct for-loop approach of `@nloops`, but for many algorithms this shouldn't matter. Its advantage is that the dimensionality does not need to be known at compile-time.
 
-Moreover, if you're doing any nontrivial work inside your loop, it's possible that you may not notice much overhead.
 
-Finally, there's a trick that may or may not work for you:
-```julia
-sz1 = sz[1]
-sz[1] = 1
-@forcartesian c sz begin
-    for i = 1:sz1
-        # loop code that uses i anywhere c[1] would have otherwise been used
-        # For example,
-        println(i, " ", c)
-    end
-end
-```
-which generates
-```
-1 [1, 1]
-2 [1, 1]
-3 [1, 1]
-4 [1, 1]
-5 [1, 1]
-1 [1, 2]
-2 [1, 2]
-3 [1, 2]
-4 [1, 2]
-5 [1, 2]
-1 [1, 3]
-2 [1, 3]
-3 [1, 3]
-4 [1, 3]
-5 [1, 3]
-```
-This can be more trouble than it's worth if your loop code really needs to have that first index built in to `c`. However, if `sz1` is not small, and your loop code can _efficiently_ make use of `i` in place of `c[1]`, then in very tight loops this can essentially erase all overhead of multidimensional iteration. However, the following example
-```
-sz1 = sz[1]
-sz[1] = 1
-@forcartesian c sz begin
-    for i = 1:sz1
-        c[1] = i
-        counter += 1
-    end
-end
-```
-is no more performant than the original. So unless your loop is really trivial, it's very unlikely you'll notice much overhead from `Cartesian`.
+## Performance improvements for SubArrays
+
+Julia currently lacks efficient linear-indexing for generic `SubArrays`.
+Consequently, cartesian indexing is currently the only high-performance way to
+address elements of `SubArray`s. Many simple algorithms, like `sum`, can have
+their performance boosted immensely by implementing them for `SubArray`s using
+cartesian indexing. For example, in 3d it's easy to get a boost on the scale of
+100-fold this way.
