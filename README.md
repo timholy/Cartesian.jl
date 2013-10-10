@@ -56,6 +56,17 @@ The general practice is to read from left to right, which is why
 to the left and the range is to the right) whereas `@nref` is `@nref 3 A i` (as
 in `A[i1,i2,i3]`, where the array comes first).
 
+If you're developing code with Cartesian, you may find that debugging is made
+easier when you can see the generated code. This is possible via the
+(unexported) underscore-function variants:
+
+```
+julia> Cartesian._nref(3, :A, :i)
+:($(Expr(:escape, :(A[i1,i2,i3]))))
+```
+
+and similarly for `Cartesian._nloops`.
+
 There are two additional important general points described below.
 
 #### Supplying the dimensionality from functions
