@@ -67,7 +67,7 @@ t = @elapsed loopsum(S)
 t = @elapsed loopsum2(S)
 @assert t < 3tbase
 
-# @nloops with pre/post expression
+# @nloops with pre-expression
 for N = 1:4
     @eval begin
         function maxoverdims{T}(A::AbstractArray{T,$N}, region)
@@ -88,7 +88,7 @@ A1 = maxoverdims(A, 1)
 @assert A1 == [5,10]'
 A2 = maxoverdims(A, 2)
 @assert A2 == reshape(6:10,5,1)
-
+@assert maxoverdims(A, (1,2)) == reshape([10], 1, 1)
 
 # @nref, @nrefshift, @nextract, and @nlookup
 A = reshape(1:15, 3, 5)

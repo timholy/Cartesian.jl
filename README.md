@@ -35,7 +35,7 @@ for i3 = 1:size(A,3)
     end
 end
 ```
-The syntax of `@nloops` is as follows:
+The (basic) syntax of `@nloops` is as follows:
 
 - The first argument must be an integer (_not_ a variable) specifying the number
 of loops.
@@ -46,6 +46,9 @@ a variable (symbol) here, it's taken as `1:size(A,dim)`. More flexibly, you can
 use the anonymous-function expression syntax described below.
 - The last argument is the body of the loop. Here, that's what appears between
 the `begin...end`.
+
+There are some additional features described
+[below](https://github.com/timholy/Cartesian.jl#core-macros).
 
 `@nref` follows a similar pattern, generating `A[i1,i2,i3]` from `@nref 3 A i`.
 The general practice is to read from left to right, which is why
@@ -120,7 +123,8 @@ lap[i,j] = A[i+1,j] + A[i-1,j] + A[i,j+1] + A[i,j-1] - 4A[i,j]
 One obvious issue with this formula is how to handle the edges, where `A[i-1,j]`
 might not exist. There are several strategies we can pursue, some of which will
 be described below. As a first illustration of anonymous-function expressions,
-let's "punt" on the edges and just skip them. In 2d we might write
+for now let's take the easy way out and avoid dealing with them (later you'll
+see how you can handle them properly). In 2d we might write
 such code as
 
 ```
@@ -131,7 +135,8 @@ for i2 = 2:size(A,2)-1
 end
 ```
 
-where one should note that the range `2:size(A,2)-1` omits the first and last index.
+where one should note that the range `2:size(A,2)-1` omits the first and last
+index.
 
 In `Cartesian` this can be written in the following way:
 
@@ -287,26 +292,54 @@ end
 
 ```
 @nloops N itersym rangeexpr bodyexpr
+@nloops N itersym rangeexpr preexpr bodyexpr
+@nloops N itersym rangeexpr preexpr postexpr bodyexpr
 ```
-Generate `N` nested loops, using `itersym` as the prefix for the iteration variables. `rangeexpr` may be an anonymous-function expression, or a simple symbol `var` in which case the range is `1:size(var,d)` for dimension `d`.
+Generate `N` nested loops, using `itersym` as the prefix for the iteration
+variables. `rangeexpr` may be an anonymous-function expression, or a simple
+symbol `var` in which case the range is `1:size(var,d)` for dimension `d`.
+
+Optionally, you can provide "pre" and "post" expressions. These get executed
+first and last, respectively, in the body of each loop. For example,
+```
+@nloops 2 i A d->j_d=min(i_d,5) begin
+    s += @nref 2 A j
+end
+```
+would generate
+```
+for i2 = 1:size(A, 2)
+    j2 = min(i2, 5)
+    for i1 = 1:size(A, 1)
+        j1 = min(i1, 5)
+        s += A[j1, j2]
+    end
+end
+```
+If you want just a post-expression, supply `nothing` for the pre-expression.
+Using parenthesis and semicolons, you can supply multi-statement expressions.
 
 <br />
 ```
 @nref N A indexexpr
 ```
-Generate expressions like `A[i1,i2,...]`. `indexexpr` can either be an iteration-symbol prefix, or an anonymous-function expression.
+Generate expressions like `A[i1,i2,...]`. `indexexpr` can either be an
+iteration-symbol prefix, or an anonymous-function expression.
 
 <br />
 ```
 @nexpr N expr
 ```
-Generate `N` expressions. `expr` should be an anonymous-function expression. See the `laplacian` example above.
+Generate `N` expressions. `expr` should be an anonymous-function expression. See
+the `laplacian` example above.
 
 <br />
 ```
 @nextract N esym isym
 ```
-Given a tuple or vector `I` of length `N`, `@nextract 3 I I` would generate the expression `I1, I2, I3 = I`, thereby extracting each element of `I` into a separate variable.
+Given a tuple or vector `I` of length `N`, `@nextract 3 I I` would generate the
+expression `I1, I2, I3 = I`, thereby extracting each element of `I` into a
+separate variable.
 
 <br />
 ```
@@ -355,17 +388,20 @@ because the expression `d->(d==cd)` could not be evaluated at compile-time.
 @ntuple N itersym
 @ntuple N expr
 ```
-Generates an `N`-tuple from a symbol prefix (e.g., `(i1,i2,...)`) or an anonymous-function expression.
+Generates an `N`-tuple from a symbol prefix (e.g., `(i1,i2,...)`) or an
+anonymous-function expression.
 
 ```
 @nrefshift N A i j
 ```
-Generates `A[i1+j1,i2+j2,...]`. This is legacy from before `@nref` accepted anonymous-function expressions.
+Generates `A[i1+j1,i2+j2,...]`. This is legacy from before `@nref` accepted
+anonymous-function expressions.
 
 ```
 @nlookup N A I i
 ```
-Generates `A[I1[i1], I2[i2], ...]`. This can also be easily achieved with `@nref`.
+Generates `A[I1[i1], I2[i2], ...]`. This can also be easily achieved with
+`@nref`.
 
 ```
 @indexedvariable N i
@@ -375,7 +411,8 @@ Generates the expression `iN`, e.g., `@indexedvariable 2 i` would generate `i2`.
 ```
 @forcartesian itersym sz bodyexpr
 ```
-This is the oldest macro in the collection, and quite an outlier in terms of functionality:
+This is the oldest macro in the collection, and quite an outlier in terms of
+functionality:
 ```
 sz = [5,3]
 @forcartesian c sz begin
@@ -402,7 +439,8 @@ This generates the following output:
 [5, 3]
 ```
 
-From the simple example above, `@forcartesian` generates a block of code like this:
+From the simple example above, `@forcartesian` generates a block of code like
+this:
 
 ```julia
 if !(isempty(sz) || prod(sz) == 0)
@@ -425,7 +463,9 @@ if !(isempty(sz) || prod(sz) == 0)
 end
 ```
 
-This has more overhead than the direct for-loop approach of `@nloops`, but for many algorithms this shouldn't matter. Its advantage is that the dimensionality does not need to be known at compile-time.
+This has more overhead than the direct for-loop approach of `@nloops`, but for
+many algorithms this shouldn't matter. Its advantage is that the dimensionality
+does not need to be known at compile-time.
 
 
 ## Performance improvements for SubArrays
