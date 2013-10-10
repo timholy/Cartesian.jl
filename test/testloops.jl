@@ -90,6 +90,14 @@ A2 = maxoverdims(A, 2)
 @assert A2 == reshape(6:10,5,1)
 @assert maxoverdims(A, (1,2)) == reshape([10], 1, 1)
 
+# Curly-brace syntax: sum over the upper-triangle
+A = reshape(1:16, 4, 4)
+s = 0
+Cartesian.@nloops 2 i d->d==2?(1:size(A,d)):(1:i_{d+1}) begin
+    s += Cartesian.@nref 2 A i
+end
+@assert s == sum(triu(A))
+
 # @nref, @nrefshift, @nextract, and @nlookup
 A = reshape(1:15, 3, 5)
 i1 = 2

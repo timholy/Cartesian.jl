@@ -128,7 +128,7 @@ end
 
 # ... using a shiftexpr, e.g., A[i1, i2+1, ...] with d->(d==2)?1:0
 function _nrefshift(N::Int, A::Symbol, sym::Symbol, shiftexpr::Expr)
-    vars = [ popplus0(:($(namedvar(sym, i))+$(inlineanonymous(shiftexpr, i)))) for i = 1:N ]
+    vars = [ poparithmetic(:($(namedvar(sym, i))+$(inlineanonymous(shiftexpr, i)))) for i = 1:N ]
     Expr(:escape, Expr(:ref, A, vars...))
 end
 
@@ -248,8 +248,8 @@ function inlineanonymous(ex::Expr, val)
     sym = ex.args[1]
     ex = ex.args[2]
     exout = replace(copy(ex), sym, val)
-    # Inline ternary expressions
     exout = poplinenum(exout)
+    # Inline ternary expressions
     if exout.head == :if
         try
             tf = eval(exout.args[1])
@@ -278,6 +278,11 @@ function replace(s::Symbol, sym::Symbol, val)
     s
 end
 function replace(ex::Expr, sym::Symbol, val)
+    # Curly-brace notation
+    if ex.head == :curly && length(ex.args) == 2 && isa(ex.args[1], Symbol) && endswith(string(ex.args[1]), "_")
+        excurly = replace(ex.args[2], sym, val)
+        return symbol(string(ex.args[1])[1:end-1]*string(poparithmetic(excurly)))
+    end
     for i in 1:length(ex.args)
         ex.args[i] = replace(ex.args[i], sym, val)
     end
@@ -295,9 +300,12 @@ function poplinenum(ex::Expr)
     ex
 end
 
-# Perhaps the compiler does this?
-function popplus0(ex::Expr)
-    if ex.head == :call && (ex.args[1] == :+ || ex.args[1] == :-) && ex.args[3] == 0
+# This only handles simple stuff
+function poparithmetic(ex::Expr)
+    if ex.head == :call && in(ex.args[1], (:+, :-, :*, :/)) && all([isa(ex.args[i], Number) for i = 2:length(ex.args)])
+        return eval(ex)
+    elseif ex.head == :call && (ex.args[1] == :+ || ex.args[1] == :-) && length(ex.args) == 3 && ex.args[3] == 0
+        # simplify x+0 and x-0
         return ex.args[2]
     end
     ex

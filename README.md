@@ -178,6 +178,10 @@ gets translated into
 A[i1+j1, i2+j2, i3+j3]
 ```
 
+The `_` notation mimics the subscript notation of LaTeX; also like LaTeX, you
+can use curly-braces to group sub-expressions. For example,
+`d->p_{d-1}=p_d-1` generates `p2 = p3 - 1`.
+
 ## A complete example: implementing `imfilter`
 
 With this, we have enough machinery to implement a simple multidimensional
