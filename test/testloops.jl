@@ -67,6 +67,29 @@ t = @elapsed loopsum(S)
 t = @elapsed loopsum2(S)
 @assert t < 3tbase
 
+# @nloops with pre/post expression
+for N = 1:4
+    @eval begin
+        function maxoverdims{T}(A::AbstractArray{T,$N}, region)
+            szout = [size(A,d) for d = 1:$N]
+            szout[[region...]] = 1
+            B = fill(typemin(T), szout...)::Array{T,$N}
+            Cartesian.@nextract $N szout szout
+            Cartesian.@nloops $N i A d->(j_d = szout_d==1 ? 1 : i_d) begin
+                (Cartesian.@nref $N B j) = max((Cartesian.@nref $N B j), (Cartesian.@nref $N A i))
+            end
+            B
+        end
+    end
+end
+
+A = reshape(1:10,5,2)
+A1 = maxoverdims(A, 1)
+@assert A1 == [5,10]'
+A2 = maxoverdims(A, 2)
+@assert A2 == reshape(6:10,5,1)
+
+
 # @nref, @nrefshift, @nextract, and @nlookup
 A = reshape(1:15, 3, 5)
 i1 = 2
@@ -111,11 +134,10 @@ end
 @assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}
 
 # @nexprs
-println("About to check nexprs")
 A = reshape(1:20*7, 20, 7)
 indexes = (2:5:20,3:7)
 strds = strides(A)
 i1 = 2
 i2 = 3
 ind = 1
-@assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i1],indexes[2][i2]])
+@assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i1],indexes[2][i2]]

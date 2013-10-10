@@ -40,21 +40,29 @@ function cartesian_linear(A::AbstractArray, I::Vector{Int})
 end
 
 # Generate nested loops
-macro nloops(N, itersym, rangeexpr, ex)
-    _nloops(N, itersym, rangeexpr, ex)
+macro nloops(N, itersym, rangeexpr, args...)
+    _nloops(N, itersym, rangeexpr, args...)
 end
 
 # Range of each loop is determined by an array's size,
 #   for i2 = 1:size(A,2)
 #     for i1 = 1:size(A,1)
 #       ...
-function _nloops(N::Int, itersym::Symbol, arrayforsize::Symbol, body::Expr)
+function _nloops(N::Int, itersym::Symbol, arrayforsize::Symbol, args::Expr...)
+    if !(1 <= length(args) <= 3)
+        error("Too many arguments")
+    end
+    body = args[end]
     ex = Expr(:escape, body)
     for dim = 1:N
         itervar = namedvar(itersym, dim)
+        preexpr = length(args) > 1 ? inlineanonymous(args[1], dim) : (:(nothing))
+        postexpr = length(args) > 2 ? inlineanonymous(args[2], dim) : (:(nothing))
         ex = quote
             for $(esc(itervar)) = 1:size($(esc(arrayforsize)),$dim)
+                $(esc(preexpr))
                 $ex
+                $(esc(postexpr))
             end
         end
     end
@@ -67,17 +75,25 @@ end
 # anonymous function expression.
 # It's possible to make the range depend on a set of indexed variables, using the
 # notation i_d which gets translated into i3 for d=3.
-function _nloops(N::Int, itersym::Symbol, rangeexpr::Expr, body::Expr)
+function _nloops(N::Int, itersym::Symbol, rangeexpr::Expr, args::Expr...)
     if rangeexpr.head != :->
         error("Second argument must be an anonymous function expression to compute the range")
     end
+    if !(1 <= length(args) <= 3)
+        error("Too many arguments")
+    end
+    body = args[end]
     ex = Expr(:escape, body)
     for dim = 1:N
         itervar = namedvar(itersym, dim)
         rng = inlineanonymous(rangeexpr, dim)
+        preexpr = length(args) > 1 ? inlineanonymous(args[1], dim) : (:(nothing))
+        postexpr = length(args) > 2 ? inlineanonymous(args[2], dim) : (:(nothing))
         ex = quote
             for $(esc(itervar)) = $(esc(rng))
+                $(esc(preexpr))
                 $ex
+                $(esc(postexpr))
             end
         end
     end
