@@ -26,6 +26,6 @@ end
 
 testcounter(2,2,1)
 tbase, t = testcounter(500,300,100)
-@assert t < 5tbase
+@assert t < 10tbase
 
 include("testloops.jl")
