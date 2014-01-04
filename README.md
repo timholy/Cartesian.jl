@@ -321,11 +321,12 @@ function maxoverdims{T}(A::AbstractMatrix{T}, region)
     szout2 = szout[2]
     for i2 = 1:size(A, 2)
         j2 = szout2 == 1 ? 1 : i2
-        for i2 = 1:size(A, 1)
+        for i1 = 1:size(A, 1)
             j1 = szout1 == 1 ? 1 : i1
-            B[j1,j2] = max(B[j1,j2], A[i1,i2])
+            @inbounds B[j1,j2] = max(B[j1,j2], A[i1,i2])
         end
     end
+    B
 end
 ```
 This code can be generated for arbitrary dimensions in the following way:
@@ -338,7 +339,7 @@ for N = 1:4
             B = fill(typemin(T), szout...)::Array{T,$N}
             Cartesian.@nextract $N szout szout
             Cartesian.@nloops $N i A d->(j_d = szout_d==1 ? 1 : i_d) begin
-                (Cartesian.@nref $N B j) = max((Cartesian.@nref $N B j), (Cartesian.@nref $N A i))
+                @inbounds (Cartesian.@nref $N B j) = max((Cartesian.@nref $N B j), (Cartesian.@nref $N A i))
             end
             B
         end
