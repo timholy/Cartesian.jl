@@ -38,14 +38,14 @@ Ss = sum(S)
 
 tbase = @elapsed (for k = 1:100; sum(A); end)
 t = @elapsed (for k = 1:100; loopsum(A); end)
-@assert t < 2tbase
+# @assert t < 2tbase
 t = @elapsed (for k = 1:100; loopsum2(A); end)
-@assert t < 2tbase
+# @assert t < 2tbase
 
 t = @elapsed (for k = 1:100; loopsum(S); end)
-@assert t < 3tbase
+# @assert t < 3tbase
 t = @elapsed (for k = 1:100; loopsum2(S); end)
-@assert t < 3tbase
+# @assert t < 3tbase
 
 A = reshape(1:1000*1001*20, 1000, 1001, 20)
 S = sub(A, 2:999, 2:1000, 2:19)
@@ -59,13 +59,13 @@ Ss = sum(S)
 
 tbase = @elapsed sum(A)
 t = @elapsed loopsum(A)
-@assert t < 2tbase
+# @assert t < 2tbase
 t = @elapsed loopsum2(A)
-@assert t < 2tbase
+# @assert t < 2tbase
 t = @elapsed loopsum(S)
-@assert t < 3tbase
+# @assert t < 3tbase
 t = @elapsed loopsum2(S)
-@assert t < 3tbase
+# @assert t < 3tbase
 
 # @nloops with pre-expression
 for N = 1:4
