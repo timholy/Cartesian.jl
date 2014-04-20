@@ -250,7 +250,7 @@ In two dimensions, we'll generate the following code, which uses "replicating
 boundary conditions" to handle the edges gracefully:
 
 ```
-function laplacian{T}(A::Array{T,$N})
+function laplacian{T}(A::Array{T,2})
     B = similar(A)
     for i2 = 1:size(A,2), i1 = 1:size(A,1)
         tmp = zero(T)
