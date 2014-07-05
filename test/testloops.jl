@@ -100,35 +100,35 @@ end
 
 # @nref, @nrefshift, @nextract, and @nlookup
 A = reshape(1:15, 3, 5)
-i1 = 2
-i2 = 3
-@assert (Cartesian.@nref 2 A i) == A[i1, i2]
-j1 = -1
-j2 = 2
-@assert (Cartesian.@nrefshift 2 A i j) == A[i1+j1, i2+j2]
-@assert (Cartesian.@nrefshift 2 A i d->(d==2)?1:0) == A[i1, i2+1]
-I = ([i1], [i2])
+i_1 = 2
+i_2 = 3
+@assert (Cartesian.@nref 2 A i) == A[i_1, i_2]
+j_1 = -1
+j_2 = 2
+@assert (Cartesian.@nrefshift 2 A i j) == A[i_1+j_1, i_2+j_2]
+@assert (Cartesian.@nrefshift 2 A i d->(d==2)?1:0) == A[i_1, i_2+1]
+I = ([i_1], [i_2])
 Cartesian.@nextract 2 k I
-@assert k1 == [i1]
-@assert k2 == [i2]
-j1 = 1
-j2 = 1
-@assert (Cartesian.@nlookup 2 A k j) == A[i1, i2]
+@assert k_1 == [i_1]
+@assert k_2 == [i_2]
+j_1 = 1
+j_2 = 1
+@assert (Cartesian.@nlookup 2 A k j) == A[i_1, i_2]
 
 # @nlinear
 A = reshape(1:120, 3, 4, 10)
-i1 = 2
-i2 = 2
-i3 = 7
+i_1 = 2
+i_2 = 2
+i_3 = 7
 p, index = Cartesian.@nlinear 3 A i
-@assert index == A[i1, i2, i3]
+@assert index == A[i_1, i_2, i_3]
 
 # The i_d notation
-i1 = 2
-i2 = -1
+i_1 = 2
+i_2 = -1
 pairs = {}
 Cartesian.@nloops 2 j d->(1-min(0,i_d):4-max(0,i_d)) begin
-    push!(pairs, (j1,j2))
+    push!(pairs, (j_1,j_2))
 end
 @assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}
 
@@ -136,7 +136,7 @@ end
 pairs = {}
 Cartesian.@nloops 2 j d->1:4 begin
     if Cartesian.@nall 2 d->(1 <= j_d+i_d <= 4)
-        push!(pairs, (j1,j2))
+        push!(pairs, (j_1,j_2))
     end
 end
 @assert pairs == {(1,2),(2,2),(1,3),(2,3),(1,4),(2,4)}
@@ -145,7 +145,7 @@ end
 A = reshape(1:20*7, 20, 7)
 indexes = (2:5:20,3:7)
 strds = strides(A)
-i1 = 2
-i2 = 3
+i_1 = 2
+i_2 = 3
 ind = 1
-@assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i1],indexes[2][i2]]
+@assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i_1],indexes[2][i_2]]

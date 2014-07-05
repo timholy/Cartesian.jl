@@ -5,6 +5,25 @@ Fast multidimensional algorithms for the Julia language.
 This package provides macros that currently appear to be the most performant way
 to implement numerous multidimensional algorithms in Julia.
 
+## NEWS: Cartesian is in Base, and backwards compatibility
+
+If you're using at least a pre-release version of Julia 0.3, I recommend using the version
+in base, which you can access with `using Base.Cartesian`.
+I also recommend the base [documentation](http://docs.julialang.org/en/latest/devdocs/cartesian/).
+
+At this point, the best purpose for this package is to provide a base-compatible
+implementation of Cartesian for Julia 0.2. This was implemented in the
+the 0.2 release of this package. Unfortunately, this changed several features,
+including the naming convention for variables
+(from `i1` to `i_1`). If you directly use these names (most likely, you do not), this will break your code.
+Sorry about that. You can either pin the package at the 0.1.5 release, or make changes in your code.
+
+# Legacy documentation
+
+The following documentation applies only for this package's 0.1 series. Use the
+[Julia documentation](http://docs.julialang.org/en/latest/devdocs/cartesian/) if you are using
+a more recent version of this package.
+
 ## Caution
 
 In practice, `Cartesian` effectively introduces a separate "dialect" of
