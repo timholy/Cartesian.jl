@@ -45,11 +45,11 @@ macro ngenerate(itersyms, returntypeexpr, args...)
     isfuncexpr(funcexpr) || error("Requires a function expression")
     
     if isa(itersyms, Symbol)
-        dims = length(args) == 1 ? [1:CARTESIAN_DIMS] : args[1]
+        dims = length(args) == 1 ? [1:CARTESIAN_DIMS] : eval(args[1])
     elseif isa(itersyms, Expr) && itersyms.head == :tuple && all(x->isa(x, Symbol), itersyms.args)
         itersyms=tuple(itersyms.args...)
         nsym = length(itersyms)
-        dims = length(args) == 1 ? [] : args[1]
+        dims = length(args) == 1 ? [] : eval(args[1])
     else
         error("Requires a symbol or tuple of symbols")
     end 
@@ -95,7 +95,7 @@ macro nsplat(itersym, args...)
     esc(Expr(:block, explicit..., splat))
 end
 
-generate1(itersym::Union(Symbol,Int), prototype, bodyfunc, N::Int, varname, T) =
+generate1(itersym::Symbol, prototype, bodyfunc, N::Int, varname, T) =
     Expr(:function, spliceint!(sreplace!(resolvesplat!(copy(prototype), varname, T, N), itersym, N)),
          resolvesplats!(bodyfunc(N), varname, N))
 generate1{K}(itersyms::NTuple{K,Symbol}, prototype, bodyfunc, itervals::NTuple{K,Int}) =
@@ -126,7 +126,7 @@ function ngenerate(itersym::Symbol, returntypeexpr, prototype, bodyfunc, dims, m
     F = Expr(:function, resolvesplat!(prototype, varname, T), quote
              $setitersym
              if !haskey($dictname, $itersym)
-                 gen1 = Cartesian.generate1($(symbol(itersym)), $(Expr(:quote, flocal)), $bodyfunc, $itersym, $varname, $T)
+                 gen1 = Cartesian.generate1($(Expr(:quote,itersym)), $(Expr(:quote, flocal)), $bodyfunc, $itersym, $varname, $T)
                  $(dictname)[$itersym] = eval(quote
                      local _F_
                      $gen1
