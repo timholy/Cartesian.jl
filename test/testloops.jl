@@ -1,4 +1,5 @@
 import Cartesian
+using Base.Test
 
 # @nloops with range expression
 for N = 1:4
@@ -149,3 +150,17 @@ i_1 = 2
 i_2 = 3
 ind = 1
 @assert (Cartesian.@nexprs 2 d->(ind += (indexes[d][i_d]-1)*strds[d])) == A[indexes[1][i_1],indexes[2][i_2]]
+
+
+# @ngenerate
+Cartesian.@ngenerate N T function loopsum3{T,N}(A::StridedArray{T,N})
+    s = zero(eltype(A))
+    @inbounds Cartesian.@nloops(N, i, A, begin
+        s += Cartesian.@nref(N, A, i)
+    end)
+    s
+end
+A = reshape(1:8, 2, 2, 2)
+@test loopsum3(A) == 36
+A = reshape(1:32, 2, 2, 2, 2, 2)
+@test loopsum3(A) == 528
