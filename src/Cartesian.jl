@@ -1,7 +1,5 @@
 module Cartesian
 
-import Base: replace
-
 include("compat.jl")
 
 export @ngenerate, @nsplat, @nloops, @nref, @ncall, @nexprs, @nextract, @nall, @ntuple, @nif, ngenerate
@@ -101,7 +99,7 @@ generate1(itersym::Symbol, prototype, bodyfunc, N::Int, varname, T) =
 generate1{K}(itersyms::NTuple{K,Symbol}, prototype, bodyfunc, itervals::NTuple{K,Int}) =
      Expr(:function, spliceint!(sreplace!(copy(prototype), itersyms, itervals)), bodyfunc(itervals))
 
-function ngenerate(itersym::Symbol, returntypeexpr, prototype, bodyfunc, dims, makecached::Bool = true)
+function ngenerate(itersym::Symbol, returntypeexpr, prototype, bodyfunc, dims=1:CARTESIAN_DIMS, makecached::Bool = true)
     varname, T = get_splatinfo(prototype, itersym)
     # Generate versions for specific dimensions
     fdim = [generate1(itersym, prototype, bodyfunc, N, varname, T) for N in dims]
