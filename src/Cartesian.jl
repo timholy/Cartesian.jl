@@ -41,19 +41,19 @@ macro ngenerate(itersyms, returntypeexpr, args...)
         error("Incorrect number of arguments")
     end
     isfuncexpr(funcexpr) || error("Requires a function expression")
-    
+
     if isa(itersyms, Symbol)
-        dims = length(args) == 1 ? [1:CARTESIAN_DIMS] : eval(args[1])
+        dims = length(args) == 1 ? [1:CARTESIAN_DIMS;] : eval(args[1])
     elseif isa(itersyms, Expr) && itersyms.head == :tuple && all(x->isa(x, Symbol), itersyms.args)
         itersyms=tuple(itersyms.args...)
         nsym = length(itersyms)
         dims = length(args) == 1 ? [] : eval(args[1])
     else
         error("Requires a symbol or tuple of symbols")
-    end 
+    end
     prototype = funcexpr.args[1]
     bodyfunc = N->exprresolve(sreplace!(copy(funcexpr.args[2]), itersyms, N))
-    
+
     esc(ngenerate(itersyms, returntypeexpr, prototype, bodyfunc, dims))
 end
 
